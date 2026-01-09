@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Pencil, X } from 'lucide-react';
 import { Category, TransactionType, ExpenseType } from '@/types/finance';
 import { CategoryIcon } from '@/components/icons/CategoryIcon';
 import { Button } from '@/components/ui/button';
@@ -33,15 +33,18 @@ const availableIcons = [
 interface CategoriesViewProps {
   categories: Category[];
   onAddCategory: (category: Omit<Category, 'id'>) => void;
+  onUpdateCategory: (id: string, category: Partial<Category>) => void;
   onDeleteCategory: (id: string) => void;
 }
 
 export function CategoriesView({
   categories,
   onAddCategory,
+  onUpdateCategory,
   onDeleteCategory,
 }: CategoriesViewProps) {
   const [showForm, setShowForm] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   
   const [name, setName] = useState('');
@@ -52,22 +55,54 @@ export function CategoriesView({
   const expenseCategories = categories.filter(c => c.type === 'expense');
   const incomeCategories = categories.filter(c => c.type === 'income');
 
+  const openEditForm = (category: Category) => {
+    setEditingCategory(category);
+    setName(category.name);
+    setType(category.type);
+    setExpenseType(category.expenseType || 'variable');
+    setIcon(category.icon);
+    setShowForm(true);
+  };
+
+  const openNewForm = () => {
+    setEditingCategory(null);
+    setName('');
+    setType('expense');
+    setExpenseType('variable');
+    setIcon('Coins');
+    setShowForm(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
 
-    onAddCategory({
-      name,
-      type,
-      expenseType: type === 'expense' ? expenseType : undefined,
-      icon,
-    });
+    if (editingCategory) {
+      onUpdateCategory(editingCategory.id, {
+        name,
+        type,
+        expenseType: type === 'expense' ? expenseType : undefined,
+        icon,
+      });
+    } else {
+      onAddCategory({
+        name,
+        type,
+        expenseType: type === 'expense' ? expenseType : undefined,
+        icon,
+      });
+    }
 
+    resetForm();
+  };
+
+  const resetForm = () => {
     setName('');
     setType('expense');
     setExpenseType('variable');
     setIcon('Coins');
     setShowForm(false);
+    setEditingCategory(null);
   };
 
   const handleDelete = () => {
@@ -82,7 +117,7 @@ export function CategoriesView({
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-foreground animate-fade-in">Categorias</h1>
         <Button
-          onClick={() => setShowForm(!showForm)}
+          onClick={openNewForm}
           size="sm"
           className="gap-2"
         >
@@ -91,9 +126,22 @@ export function CategoriesView({
         </Button>
       </div>
 
-      {/* Add Form */}
+      {/* Add/Edit Form */}
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 mb-6 shadow-soft animate-scale-in">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-foreground">
+              {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
+            </h3>
+            <button
+              type="button"
+              onClick={resetForm}
+              className="p-1 text-muted-foreground hover:text-foreground"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Nome</Label>
@@ -158,11 +206,11 @@ export function CategoriesView({
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowForm(false)} className="flex-1">
+              <Button type="button" variant="outline" onClick={resetForm} className="flex-1">
                 Cancelar
               </Button>
               <Button type="submit" className="flex-1">
-                Salvar
+                {editingCategory ? 'Atualizar' : 'Salvar'}
               </Button>
             </div>
           </div>
@@ -187,12 +235,20 @@ export function CategoriesView({
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setDeleteId(category.id)}
-                  className="p-2 text-muted-foreground hover:text-destructive transition-colors"
-                >
-                  <Trash2 size={18} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => openEditForm(category)}
+                    className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    <Pencil size={18} />
+                  </button>
+                  <button
+                    onClick={() => setDeleteId(category.id)}
+                    className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
               </div>
               {index < expenseCategories.length - 1 && <div className="h-px bg-border mx-4" />}
             </div>
@@ -213,12 +269,20 @@ export function CategoriesView({
                   </div>
                   <p className="font-medium text-foreground">{category.name}</p>
                 </div>
-                <button
-                  onClick={() => setDeleteId(category.id)}
-                  className="p-2 text-muted-foreground hover:text-destructive transition-colors"
-                >
-                  <Trash2 size={18} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => openEditForm(category)}
+                    className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    <Pencil size={18} />
+                  </button>
+                  <button
+                    onClick={() => setDeleteId(category.id)}
+                    className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
               </div>
               {index < incomeCategories.length - 1 && <div className="h-px bg-border mx-4" />}
             </div>

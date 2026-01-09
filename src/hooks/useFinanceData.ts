@@ -114,6 +114,12 @@ export function useFinanceData() {
     setCategories(prev => [...prev, newCategory]);
   }, []);
 
+  const updateCategory = useCallback((id: string, updates: Partial<Category>) => {
+    setCategories(prev => 
+      prev.map(c => c.id === id ? { ...c, ...updates } : c)
+    );
+  }, []);
+
   const deleteCategory = useCallback((id: string) => {
     setCategories(prev => prev.filter(c => c.id !== id));
   }, []);
@@ -124,6 +130,12 @@ export function useFinanceData() {
       id: `pm-${Date.now()}`,
     };
     setPaymentMethods(prev => [...prev, newMethod]);
+  }, []);
+
+  const updatePaymentMethod = useCallback((id: string, updates: Partial<PaymentMethod>) => {
+    setPaymentMethods(prev => 
+      prev.map(m => m.id === id ? { ...m, ...updates } : m)
+    );
   }, []);
 
   const deletePaymentMethod = useCallback((id: string) => {
@@ -157,8 +169,10 @@ export function useFinanceData() {
     updateTransaction,
     deleteTransaction,
     addCategory,
+    updateCategory,
     deleteCategory,
     addPaymentMethod,
+    updatePaymentMethod,
     deletePaymentMethod,
     getCategoryById,
     getPaymentMethodById,

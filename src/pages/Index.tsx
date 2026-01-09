@@ -31,8 +31,10 @@ const Index = () => {
     updateTransaction,
     deleteTransaction,
     addCategory,
+    updateCategory,
     deleteCategory,
     addPaymentMethod,
+    updatePaymentMethod,
     deletePaymentMethod,
   } = useFinanceData();
 
@@ -72,6 +74,11 @@ const Index = () => {
     toast.success('Categoria criada!');
   };
 
+  const handleUpdateCategory = (id: string, category: Partial<typeof categories[0]>) => {
+    updateCategory(id, category);
+    toast.success('Categoria atualizada!');
+  };
+
   const handleDeleteCategory = (id: string) => {
     deleteCategory(id);
     toast.success('Categoria excluída!');
@@ -80,6 +87,11 @@ const Index = () => {
   const handleAddPaymentMethod = (method: Omit<typeof paymentMethods[0], 'id'>) => {
     addPaymentMethod(method);
     toast.success('Meio de pagamento criado!');
+  };
+
+  const handleUpdatePaymentMethod = (id: string, method: Partial<typeof paymentMethods[0]>) => {
+    updatePaymentMethod(id, method);
+    toast.success('Meio de pagamento atualizado!');
   };
 
   const handleDeletePaymentMethod = (id: string) => {
@@ -117,6 +129,7 @@ const Index = () => {
           <CategoriesView
             categories={categories}
             onAddCategory={handleAddCategory}
+            onUpdateCategory={handleUpdateCategory}
             onDeleteCategory={handleDeleteCategory}
           />
         )}
@@ -125,6 +138,7 @@ const Index = () => {
           <PaymentMethodsView
             paymentMethods={paymentMethods}
             onAddPaymentMethod={handleAddPaymentMethod}
+            onUpdatePaymentMethod={handleUpdatePaymentMethod}
             onDeletePaymentMethod={handleDeletePaymentMethod}
           />
         )}
