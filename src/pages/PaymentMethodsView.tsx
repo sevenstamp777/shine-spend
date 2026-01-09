@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, CreditCard, Wallet, Banknote } from 'lucide-react';
+import { Plus, Trash2, Pencil, X, CreditCard } from 'lucide-react';
 import { PaymentMethod, PaymentMethodType } from '@/types/finance';
 import { PaymentMethodIcon } from '@/components/icons/CategoryIcon';
 import { Button } from '@/components/ui/button';
@@ -28,15 +28,18 @@ import { cn } from '@/lib/utils';
 interface PaymentMethodsViewProps {
   paymentMethods: PaymentMethod[];
   onAddPaymentMethod: (method: Omit<PaymentMethod, 'id'>) => void;
+  onUpdatePaymentMethod: (id: string, method: Partial<PaymentMethod>) => void;
   onDeletePaymentMethod: (id: string) => void;
 }
 
 export function PaymentMethodsView({
   paymentMethods,
   onAddPaymentMethod,
+  onUpdatePaymentMethod,
   onDeletePaymentMethod,
 }: PaymentMethodsViewProps) {
   const [showForm, setShowForm] = useState(false);
+  const [editingMethod, setEditingMethod] = useState<PaymentMethod | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   
   const [name, setName] = useState('');
@@ -48,17 +51,43 @@ export function PaymentMethodsView({
   const creditCards = paymentMethods.filter(m => m.type === 'credit_card');
   const otherMethods = paymentMethods.filter(m => m.type !== 'credit_card');
 
+  const openEditForm = (method: PaymentMethod) => {
+    setEditingMethod(method);
+    setName(method.name);
+    setType(method.type);
+    setLimit(method.limit?.toString() || '');
+    setClosingDay(method.closingDay?.toString() || '');
+    setDueDay(method.dueDay?.toString() || '');
+    setShowForm(true);
+  };
+
+  const openNewForm = () => {
+    setEditingMethod(null);
+    setName('');
+    setType('bank_account');
+    setLimit('');
+    setClosingDay('');
+    setDueDay('');
+    setShowForm(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
 
-    onAddPaymentMethod({
+    const methodData = {
       name,
       type,
       limit: type === 'credit_card' && limit ? parseFloat(limit) : undefined,
       closingDay: type === 'credit_card' && closingDay ? parseInt(closingDay) : undefined,
       dueDay: type === 'credit_card' && dueDay ? parseInt(dueDay) : undefined,
-    });
+    };
+
+    if (editingMethod) {
+      onUpdatePaymentMethod(editingMethod.id, methodData);
+    } else {
+      onAddPaymentMethod(methodData);
+    }
 
     resetForm();
   };
@@ -70,6 +99,7 @@ export function PaymentMethodsView({
     setClosingDay('');
     setDueDay('');
     setShowForm(false);
+    setEditingMethod(null);
   };
 
   const handleDelete = () => {
@@ -92,7 +122,7 @@ export function PaymentMethodsView({
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-foreground animate-fade-in">Meios de Pagamento</h1>
         <Button
-          onClick={() => setShowForm(!showForm)}
+          onClick={openNewForm}
           size="sm"
           className="gap-2"
         >
@@ -101,9 +131,22 @@ export function PaymentMethodsView({
         </Button>
       </div>
 
-      {/* Add Form */}
+      {/* Add/Edit Form */}
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 mb-6 shadow-soft animate-scale-in">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-foreground">
+              {editingMethod ? 'Editar Meio de Pagamento' : 'Novo Meio de Pagamento'}
+            </h3>
+            <button
+              type="button"
+              onClick={resetForm}
+              className="p-1 text-muted-foreground hover:text-foreground"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Nome</Label>
@@ -177,7 +220,7 @@ export function PaymentMethodsView({
                 Cancelar
               </Button>
               <Button type="submit" className="flex-1">
-                Salvar
+                {editingMethod ? 'Atualizar' : 'Salvar'}
               </Button>
             </div>
           </div>
@@ -204,12 +247,20 @@ export function PaymentMethodsView({
                       <p className="text-sm text-muted-foreground">Cartão de Crédito</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setDeleteId(method.id)}
-                    className="p-2 text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEditForm(method)}
+                      className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <Pencil size={18} />
+                    </button>
+                    <button
+                      onClick={() => setDeleteId(method.id)}
+                      className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
                 
                 {(method.limit || method.closingDay || method.dueDay) && (
@@ -264,12 +315,20 @@ export function PaymentMethodsView({
                       <p className="text-xs text-muted-foreground">{getTypeLabel(method.type)}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setDeleteId(method.id)}
-                    className="p-2 text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEditForm(method)}
+                      className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <Pencil size={18} />
+                    </button>
+                    <button
+                      onClick={() => setDeleteId(method.id)}
+                      className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
                 {index < otherMethods.length - 1 && <div className="h-px bg-border mx-4" />}
               </div>
