@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   Category, 
   PaymentMethod, 
@@ -9,15 +9,59 @@ import {
 import { 
   defaultCategories, 
   defaultPaymentMethods, 
-  sampleTransactions,
   chartColors 
 } from '@/data/initialData';
 
+const STORAGE_KEYS = {
+  categories: 'finapp_categories',
+  paymentMethods: 'finapp_payment_methods',
+  transactions: 'finapp_transactions',
+} as const;
+
+function loadFromStorage<T>(key: string, defaultValue: T): T {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error(`Error loading ${key} from localStorage:`, error);
+  }
+  return defaultValue;
+}
+
+function saveToStorage<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.error(`Error saving ${key} to localStorage:`, error);
+  }
+}
+
 export function useFinanceData() {
-  const [categories, setCategories] = useState<Category[]>(defaultCategories);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(defaultPaymentMethods);
-  const [transactions, setTransactions] = useState<Transaction[]>(sampleTransactions);
+  const [categories, setCategories] = useState<Category[]>(() => 
+    loadFromStorage(STORAGE_KEYS.categories, defaultCategories)
+  );
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(() => 
+    loadFromStorage(STORAGE_KEYS.paymentMethods, defaultPaymentMethods)
+  );
+  const [transactions, setTransactions] = useState<Transaction[]>(() => 
+    loadFromStorage(STORAGE_KEYS.transactions, [])
+  );
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+  // Persist to localStorage whenever data changes
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.categories, categories);
+  }, [categories]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.paymentMethods, paymentMethods);
+  }, [paymentMethods]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.transactions, transactions);
+  }, [transactions]);
 
   // Filter transactions by selected month
   const monthlyTransactions = useMemo(() => {
@@ -150,6 +194,13 @@ export function useFinanceData() {
     return paymentMethods.find(m => m.id === id);
   }, [paymentMethods]);
 
+  // Clear all data
+  const clearAllData = useCallback(() => {
+    setTransactions([]);
+    setCategories(defaultCategories);
+    setPaymentMethods(defaultPaymentMethods);
+  }, []);
+
   return {
     // Data
     categories,
@@ -176,5 +227,6 @@ export function useFinanceData() {
     deletePaymentMethod,
     getCategoryById,
     getPaymentMethodById,
+    clearAllData,
   };
 }
