@@ -1,5 +1,5 @@
-// LocalStorage persistence enabled
-import { useState, useMemo, useCallback, useEffect } from 'react';
+// File System Storage - dados salvos em arquivo JSON no computador
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { 
   Category, 
   PaymentMethod, 
@@ -12,57 +12,51 @@ import {
   defaultPaymentMethods, 
   chartColors 
 } from '@/data/initialData';
-
-const STORAGE_KEYS = {
-  categories: 'finapp_categories',
-  paymentMethods: 'finapp_payment_methods',
-  transactions: 'finapp_transactions',
-} as const;
-
-function loadFromStorage<T>(key: string, defaultValue: T): T {
-  try {
-    const stored = localStorage.getItem(key);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (error) {
-    console.error(`Error loading ${key} from localStorage:`, error);
-  }
-  return defaultValue;
-}
-
-function saveToStorage<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.error(`Error saving ${key} to localStorage:`, error);
-  }
-}
+import { useFileSystemStorage } from './useFileSystemStorage';
 
 export function useFinanceData() {
-  const [categories, setCategories] = useState<Category[]>(() => 
-    loadFromStorage(STORAGE_KEYS.categories, defaultCategories)
-  );
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(() => 
-    loadFromStorage(STORAGE_KEYS.paymentMethods, defaultPaymentMethods)
-  );
-  const [transactions, setTransactions] = useState<Transaction[]>(() => 
-    loadFromStorage(STORAGE_KEYS.transactions, [])
-  );
+  const fileSystem = useFileSystemStorage();
+  const [categories, setCategories] = useState<Category[]>(defaultCategories);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(defaultPaymentMethods);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [isInitialized, setIsInitialized] = useState(false);
+  const isFirstLoad = useRef(true);
 
-  // Persist to localStorage whenever data changes
+  // Load data when file system is ready
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.categories, categories);
-  }, [categories]);
+    async function loadInitialData() {
+      if (fileSystem.isReady && isFirstLoad.current) {
+        isFirstLoad.current = false;
+        const data = await fileSystem.loadData();
+        if (data) {
+          if (data.categories?.length) setCategories(data.categories);
+          if (data.paymentMethods?.length) setPaymentMethods(data.paymentMethods);
+          if (data.transactions) setTransactions(data.transactions);
+        }
+        setIsInitialized(true);
+      }
+    }
+    loadInitialData();
+  }, [fileSystem.isReady, fileSystem.loadData]);
 
+  // Save data whenever it changes (after initialization)
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.paymentMethods, paymentMethods);
-  }, [paymentMethods]);
+    if (fileSystem.isReady && isInitialized) {
+      fileSystem.saveData({ categories, paymentMethods, transactions });
+    }
+  }, [categories, paymentMethods, transactions, fileSystem.isReady, isInitialized, fileSystem.saveData]);
 
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.transactions, transactions);
-  }, [transactions]);
+  // Handle file selection and load data
+  const connectToFile = useCallback(async () => {
+    const data = await fileSystem.selectFile();
+    if (data) {
+      if (data.categories?.length) setCategories(data.categories);
+      if (data.paymentMethods?.length) setPaymentMethods(data.paymentMethods);
+      if (data.transactions) setTransactions(data.transactions);
+    }
+    setIsInitialized(true);
+  }, [fileSystem]);
 
   // Filter transactions by selected month
   const monthlyTransactions = useMemo(() => {
@@ -203,6 +197,17 @@ export function useFinanceData() {
   }, []);
 
   return {
+    // File System Status
+    fileSystem: {
+      isSupported: fileSystem.isSupported,
+      isReady: fileSystem.isReady,
+      isLoading: fileSystem.isLoading,
+      fileName: fileSystem.fileName,
+      error: fileSystem.error,
+      connect: connectToFile,
+      disconnect: fileSystem.disconnect,
+    },
+    
     // Data
     categories,
     paymentMethods,
@@ -212,6 +217,7 @@ export function useFinanceData() {
     expensesByCategory,
     recentTransactions,
     selectedMonth,
+    isInitialized,
     
     // Setters
     setSelectedMonth,
