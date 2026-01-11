@@ -19,6 +19,15 @@ export interface PaymentMethod {
   dueDay?: number;
 }
 
+// Item individual de uma transação (como linha de cupom fiscal)
+export interface TransactionItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
 export interface Transaction {
   id: string;
   description: string;
@@ -28,6 +37,8 @@ export interface Transaction {
   categoryId: string;
   paymentMethodId: string;
   notes?: string;
+  // Itens detalhados (opcional - para discriminação tipo cupom fiscal)
+  items?: TransactionItem[];
 }
 
 export interface MonthlyBalance {

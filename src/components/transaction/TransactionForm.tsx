@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { X, Calculator } from 'lucide-react';
-import { Transaction, TransactionType, Category, PaymentMethod } from '@/types/finance';
+import { X } from 'lucide-react';
+import { Transaction, TransactionType, TransactionItem, Category, PaymentMethod } from '@/types/finance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CategoryIcon, PaymentMethodIcon } from '@/components/icons/CategoryIcon';
+import { TransactionItemsEditor } from './TransactionItemsEditor';
 import { cn } from '@/lib/utils';
 
 interface TransactionFormProps {
@@ -43,6 +44,7 @@ export function TransactionForm({
       : new Date().toISOString().split('T')[0]
   );
   const [notes, setNotes] = useState(transaction?.notes || '');
+  const [items, setItems] = useState<TransactionItem[]>(transaction?.items || []);
 
   const filteredCategories = categories.filter(c => c.type === type);
 
@@ -69,6 +71,7 @@ export function TransactionForm({
       categoryId,
       paymentMethodId,
       notes: notes || undefined,
+      items: items.length > 0 ? items : undefined,
     });
   };
 
@@ -81,6 +84,10 @@ export function TransactionForm({
     setAmount(cleaned);
   };
 
+  const handleTotalChange = (total: number) => {
+    setAmount(total.toFixed(2));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div 
@@ -88,7 +95,7 @@ export function TransactionForm({
         onClick={onClose}
       />
       
-      <div className="relative w-full sm:max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-soft-xl animate-slide-up sm:animate-scale-in max-h-[90vh] overflow-auto">
+      <div className="relative w-full sm:max-w-lg bg-card rounded-t-3xl sm:rounded-2xl shadow-soft-xl animate-slide-up sm:animate-scale-in max-h-[90vh] overflow-auto">
         <div className="sticky top-0 bg-card z-10 px-6 pt-6 pb-4 border-b border-border">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-foreground">
@@ -136,7 +143,7 @@ export function TransactionForm({
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Amount */}
           <div className="space-y-2">
-            <Label htmlFor="amount" className="text-muted-foreground">Valor</Label>
+            <Label htmlFor="amount" className="text-muted-foreground">Valor Total</Label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
                 R$
@@ -154,6 +161,14 @@ export function TransactionForm({
             </div>
           </div>
 
+          {/* Items Editor (Cupom Fiscal) */}
+          <TransactionItemsEditor
+            items={items}
+            onChange={setItems}
+            totalAmount={parseFloat(amount) || 0}
+            onTotalChange={handleTotalChange}
+          />
+
           {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="description" className="text-muted-foreground">Descrição</Label>
@@ -161,7 +176,7 @@ export function TransactionForm({
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex: Café na padaria"
+              placeholder="Ex: Compras no supermercado"
               className="h-12"
               required
             />
@@ -174,7 +189,7 @@ export function TransactionForm({
               <SelectTrigger className="h-12 bg-background">
                 <SelectValue placeholder="Selecione uma categoria" />
               </SelectTrigger>
-              <SelectContent className="bg-popover">
+              <SelectContent className="bg-popover max-h-60">
                 {filteredCategories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     <div className="flex items-center gap-3">
