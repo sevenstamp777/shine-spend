@@ -1,3 +1,4 @@
+// LocalStorage persistence enabled
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   Category, 
