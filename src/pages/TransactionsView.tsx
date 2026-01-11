@@ -166,6 +166,7 @@ export function TransactionsView({
                       category={getCategoryById(transaction.categoryId)}
                       paymentMethod={getPaymentMethodById(transaction.paymentMethodId)}
                       onClick={() => onTransactionClick(transaction)}
+                      showDetails={true}
                     />
                     {index < monthTransactions.length - 1 && (
                       <div className="h-px bg-border mx-4" />
