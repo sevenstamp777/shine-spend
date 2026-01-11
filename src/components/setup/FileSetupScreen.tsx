@@ -1,4 +1,4 @@
-import { FileText, FolderOpen, AlertTriangle } from 'lucide-react';
+import { FileText, FolderOpen, AlertTriangle, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -25,18 +25,50 @@ export function FileSetupScreen({ isSupported, error, onConnect }: FileSetupScre
           </div>
 
           {!isSupported ? (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-left">
-              <div className="flex gap-3">
-                <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-medium text-destructive">Navegador não suportado</p>
-                  <p className="text-sm text-muted-foreground">
-                    A File System Access API não é suportada neste navegador. 
-                    Por favor, use Chrome, Brave, Edge ou outro navegador baseado em Chromium.
-                  </p>
+            <>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-left">
+                <div className="flex gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-medium text-amber-600 dark:text-amber-400">Modo de compatibilidade</p>
+                    <p className="text-sm text-muted-foreground">
+                      A File System Access API não está disponível neste navegador. 
+                      Seus dados serão salvos no armazenamento local do navegador.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <div className="space-y-3 text-left bg-muted/50 rounded-lg p-4">
+                <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Database className="w-4 h-4" />
+                  Armazenamento local:
+                </p>
+                <ul className="text-sm text-muted-foreground space-y-2">
+                  <li className="flex gap-2">
+                    <span className="text-primary">✓</span>
+                    Dados salvos automaticamente
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-primary">✓</span>
+                    Persistem entre sessões
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-amber-500">!</span>
+                    Use Chrome/Brave para salvar em arquivo
+                  </li>
+                </ul>
+              </div>
+
+              <Button 
+                onClick={onConnect} 
+                size="lg" 
+                className="w-full gap-2"
+              >
+                <Database className="w-5 h-5" />
+                Continuar com armazenamento local
+              </Button>
+            </>
           ) : (
             <>
               <div className="space-y-3 text-left bg-muted/50 rounded-lg p-4">
