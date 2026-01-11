@@ -28,6 +28,7 @@ declare global {
 const DB_NAME = 'finapp_filehandle_db';
 const STORE_NAME = 'filehandles';
 const HANDLE_KEY = 'dataFileHandle';
+const LOCALSTORAGE_KEY = 'finapp_data';
 
 // IndexedDB helpers to persist file handle between sessions
 async function openDB(): Promise<IDBDatabase> {
@@ -71,14 +72,40 @@ async function getHandleFromDB(): Promise<FileSystemFileHandle | null> {
 }
 
 async function clearHandleFromDB(): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.delete(HANDLE_KEY);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve();
-  });
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.delete(HANDLE_KEY);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  } catch {
+    // Ignore errors
+  }
+}
+
+// LocalStorage fallback functions
+function loadFromLocalStorage(): FileSystemStorageData | null {
+  try {
+    const data = localStorage.getItem(LOCALSTORAGE_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveToLocalStorage(data: Omit<FileSystemStorageData, 'lastSaved'>): void {
+  try {
+    const dataToSave: FileSystemStorageData = {
+      ...data,
+      lastSaved: new Date().toISOString(),
+    };
+    localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify(dataToSave));
+  } catch (err) {
+    console.error('Error saving to localStorage:', err);
+  }
 }
 
 export function useFileSystemStorage() {
@@ -87,45 +114,64 @@ export function useFileSystemStorage() {
   const [isLoading, setIsLoading] = useState(true);
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Check if File System Access API is supported
-  const isSupported = typeof window !== 'undefined' && 'showSaveFilePicker' in window;
+  // Check if File System Access API is supported and usable
+  const checkFileSystemSupport = useCallback((): boolean => {
+    if (typeof window === 'undefined') return false;
+    if (!('showSaveFilePicker' in window)) return false;
+    
+    // Check if in restricted environment
+    try {
+      if (window.self !== window.top) return false;
+    } catch {
+      return false;
+    }
+    
+    return true;
+  }, []);
 
-  // Try to restore previous file handle on mount
+  const isSupported = checkFileSystemSupport();
+
+  // Initialize on mount - always start ready with localStorage or file
   useEffect(() => {
-    async function restoreHandle() {
-      if (!isSupported) {
-        setIsLoading(false);
-        setError('Seu navegador não suporta File System Access API. Use Chrome ou Brave.');
-        return;
+    async function initialize() {
+      // Try to restore file handle if supported
+      if (isSupported) {
+        try {
+          const storedHandle = await getHandleFromDB();
+          if (storedHandle && storedHandle.queryPermission) {
+            const permission = await storedHandle.queryPermission({ mode: 'readwrite' });
+            if (permission === 'granted') {
+              setFileHandle(storedHandle);
+              setFileName(storedHandle.name);
+              setUsingFallback(false);
+              setIsReady(true);
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch (err) {
+          console.log('Could not restore file handle');
+        }
       }
 
-      try {
-        const storedHandle = await getHandleFromDB();
-        if (storedHandle && storedHandle.queryPermission) {
-          // Verify we still have permission
-          const permission = await storedHandle.queryPermission({ mode: 'readwrite' });
-          if (permission === 'granted') {
-            setFileHandle(storedHandle);
-            setFileName(storedHandle.name);
-            setIsReady(true);
-          }
-        }
-      } catch (err) {
-        console.log('No stored file handle or permission denied');
-      }
+      // Default to localStorage (always works)
+      setUsingFallback(true);
+      setFileName('Armazenamento local');
+      setIsReady(true);
       setIsLoading(false);
     }
 
-    restoreHandle();
+    initialize();
   }, [isSupported]);
 
-  // Select or create a new file
+  // Select or create a new file (for when user explicitly wants file storage)
   const selectFile = useCallback(async (): Promise<FileSystemStorageData | null> => {
     if (!isSupported || !window.showSaveFilePicker) {
-      setError('Seu navegador não suporta File System Access API.');
-      return null;
+      setError('File System API não disponível. Usando armazenamento local.');
+      return loadFromLocalStorage();
     }
 
     try {
@@ -139,7 +185,6 @@ export function useFileSystemStorage() {
         ],
       });
 
-      // Request permission
       if (handle.requestPermission) {
         const permission = await handle.requestPermission({ mode: 'readwrite' });
         if (permission !== 'granted') {
@@ -148,11 +193,10 @@ export function useFileSystemStorage() {
         }
       }
 
-      // Save handle for future sessions
       await saveHandleToDB(handle);
       setFileHandle(handle);
       setFileName(handle.name);
-      setIsReady(true);
+      setUsingFallback(false);
       setError(null);
 
       // Try to read existing data
@@ -163,7 +207,7 @@ export function useFileSystemStorage() {
           return JSON.parse(text);
         }
       } catch {
-        // File is empty or new, that's okay
+        // File is empty or new
       }
 
       return null;
@@ -175,18 +219,22 @@ export function useFileSystemStorage() {
     }
   }, [isSupported]);
 
-  // Load data from file
+  // Load data from file or localStorage
   const loadData = useCallback(async (): Promise<FileSystemStorageData | null> => {
-    if (!fileHandle) return null;
+    if (usingFallback) {
+      return loadFromLocalStorage();
+    }
+
+    if (!fileHandle) return loadFromLocalStorage();
 
     try {
-      // Re-request permission if needed
       if (fileHandle.requestPermission) {
         const permission = await fileHandle.requestPermission({ mode: 'readwrite' });
         if (permission !== 'granted') {
-          setError('Permissão negada. Clique em "Selecionar Arquivo" novamente.');
-          setIsReady(false);
-          return null;
+          // Fall back to localStorage
+          setUsingFallback(true);
+          setFileName('Armazenamento local');
+          return loadFromLocalStorage();
         }
       }
 
@@ -197,47 +245,53 @@ export function useFileSystemStorage() {
       }
     } catch (err: any) {
       console.error('Error loading data:', err);
-      setError('Erro ao carregar dados: ' + err.message);
+      // Fall back to localStorage
+      setUsingFallback(true);
+      setFileName('Armazenamento local');
+      return loadFromLocalStorage();
     }
     return null;
-  }, [fileHandle]);
+  }, [fileHandle, usingFallback]);
 
-  // Save data to file (debounced)
+  // Save data (debounced)
   const saveData = useCallback(async (data: Omit<FileSystemStorageData, 'lastSaved'>): Promise<boolean> => {
-    if (!fileHandle) return false;
-
-    // Clear any pending save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
     return new Promise((resolve) => {
       saveTimeoutRef.current = setTimeout(async () => {
-        try {
-          const writable = await fileHandle.createWritable();
-          const dataToSave: FileSystemStorageData = {
-            ...data,
-            lastSaved: new Date().toISOString(),
-          };
-          await writable.write(JSON.stringify(dataToSave, null, 2));
-          await writable.close();
-          setError(null);
-          resolve(true);
-        } catch (err: any) {
-          console.error('Error saving data:', err);
-          setError('Erro ao salvar: ' + err.message);
-          resolve(false);
-        }
-      }, 500); // Debounce 500ms
-    });
-  }, [fileHandle]);
+        // Always save to localStorage as backup
+        saveToLocalStorage(data);
 
-  // Disconnect from current file
-  const disconnect = useCallback(async () => {
+        // If using file, also save there
+        if (!usingFallback && fileHandle) {
+          try {
+            const writable = await fileHandle.createWritable();
+            const dataToSave: FileSystemStorageData = {
+              ...data,
+              lastSaved: new Date().toISOString(),
+            };
+            await writable.write(JSON.stringify(dataToSave, null, 2));
+            await writable.close();
+            setError(null);
+          } catch (err: any) {
+            console.error('Error saving to file:', err);
+            // Don't show error, localStorage backup exists
+          }
+        }
+
+        resolve(true);
+      }, 500);
+    });
+  }, [fileHandle, usingFallback]);
+
+  // Switch to localStorage
+  const useLocalStorage = useCallback(async () => {
     await clearHandleFromDB();
     setFileHandle(null);
-    setFileName(null);
-    setIsReady(false);
+    setFileName('Armazenamento local');
+    setUsingFallback(true);
   }, []);
 
   return {
@@ -246,9 +300,10 @@ export function useFileSystemStorage() {
     isLoading,
     fileName,
     error,
+    usingFallback,
     selectFile,
     loadData,
     saveData,
-    disconnect,
+    useLocalStorage,
   };
 }

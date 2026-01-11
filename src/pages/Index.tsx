@@ -4,13 +4,13 @@ import { useFinanceData } from '@/hooks/useFinanceData';
 import { BottomNavigation } from '@/components/layout/BottomNavigation';
 import { FloatingActionButton } from '@/components/layout/FloatingActionButton';
 import { TransactionForm } from '@/components/transaction/TransactionForm';
-import { FileSetupScreen } from '@/components/setup/FileSetupScreen';
 import { DashboardView } from './DashboardView';
 import { TransactionsView } from './TransactionsView';
 import { CategoriesView } from './CategoriesView';
 import { PaymentMethodsView } from './PaymentMethodsView';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
+import { Database, FileText, FolderOpen } from 'lucide-react';
 
 type TabId = 'dashboard' | 'transactions' | 'categories' | 'payments';
 
@@ -40,25 +40,12 @@ const Index = () => {
     deletePaymentMethod,
   } = useFinanceData();
 
-  // Show setup screen if file system not ready
+  // Show loading state
   if (fileSystem.isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Carregando...</div>
       </div>
-    );
-  }
-
-  if (!fileSystem.isReady) {
-    return (
-      <>
-        <FileSetupScreen
-          isSupported={fileSystem.isSupported}
-          error={fileSystem.error}
-          onConnect={fileSystem.connect}
-        />
-        <Toaster position="top-center" />
-      </>
     );
   }
 
@@ -123,26 +110,43 @@ const Index = () => {
     toast.success('Meio de pagamento excluído!');
   };
 
+  const handleSwitchToFile = async () => {
+    await fileSystem.connect();
+    toast.success('Dados migrados para arquivo!');
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      {/* File indicator */}
+      {/* Storage indicator */}
       <div className="bg-muted/30 border-b border-border px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
+          {fileSystem.usingFallback ? (
+            <Database className="w-4 h-4" />
+          ) : (
+            <FileText className="w-4 h-4" />
+          )}
           <span className="font-medium text-foreground">{fileSystem.fileName}</span>
         </div>
-        <button
-          onClick={fileSystem.disconnect}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Trocar arquivo
-        </button>
+        {fileSystem.isSupported && fileSystem.usingFallback && (
+          <button
+            onClick={handleSwitchToFile}
+            className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+          >
+            <FolderOpen className="w-3 h-3" />
+            Salvar em arquivo
+          </button>
+        )}
+        {!fileSystem.usingFallback && (
+          <button
+            onClick={fileSystem.useLocalStorage}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Usar armazenamento local
+          </button>
+        )}
       </div>
 
-      <main className="container max-w-lg mx-auto px-4 py-4">
+      <main className="container max-w-lg mx-auto px-4 py-4 pb-24">
         {activeTab === 'dashboard' && (
           <DashboardView
             selectedMonth={selectedMonth}

@@ -1,4 +1,4 @@
-// File System Storage - dados salvos em arquivo JSON no computador
+// File System Storage - dados salvos em arquivo JSON ou localStorage
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { 
   Category, 
@@ -204,8 +204,9 @@ export function useFinanceData() {
       isLoading: fileSystem.isLoading,
       fileName: fileSystem.fileName,
       error: fileSystem.error,
+      usingFallback: fileSystem.usingFallback,
       connect: connectToFile,
-      disconnect: fileSystem.disconnect,
+      useLocalStorage: fileSystem.useLocalStorage,
     },
     
     // Data
