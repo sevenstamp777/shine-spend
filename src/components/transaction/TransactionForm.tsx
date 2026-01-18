@@ -53,7 +53,10 @@ export function TransactionForm({
   const isExpense = type === 'expense';
   
   // Validation for expenses: must have items and all items must have categories
-  const itemsValid = !isExpense || (items.length > 0 && items.every(item => item.categoryId));
+  // For expenses: items required with categories. For income: always valid (no items needed)
+  const itemsValid = isExpense 
+    ? (items.length > 0 && items.every(item => item.categoryId))
+    : true;
 
   useEffect(() => {
     // Reset category when type changes if current category doesn't match
