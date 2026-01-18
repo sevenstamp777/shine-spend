@@ -48,30 +48,62 @@ export function TransactionForm({
 
   const filteredCategories = categories.filter(c => c.type === type);
 
+  // For expenses: items are required and category comes from items
+  // For income: category selector is shown (no items)
+  const isExpense = type === 'expense';
+  
+  // Validation for expenses: must have items and all items must have categories
+  const itemsValid = !isExpense || (items.length > 0 && items.every(item => item.categoryId));
+
   useEffect(() => {
     // Reset category when type changes if current category doesn't match
     const currentCategory = categories.find(c => c.id === categoryId);
     if (currentCategory && currentCategory.type !== type) {
       setCategoryId('');
     }
+    // Clear items when switching to income
+    if (type === 'income') {
+      setItems([]);
+    }
   }, [type, categoryId, categories]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!description || !amount || !categoryId || !paymentMethodId) {
+    // For expenses: require items with categories
+    if (isExpense) {
+      if (items.length === 0) {
+        return;
+      }
+      if (!items.every(item => item.categoryId)) {
+        return;
+      }
+    }
+    
+    // For income: require category
+    if (!isExpense && !categoryId) {
       return;
     }
+
+    if (!description || !amount || !paymentMethodId) {
+      return;
+    }
+
+    // For expenses, use the first item's category as the "main" category (for backwards compatibility)
+    // The real category breakdown comes from items
+    const mainCategoryId = isExpense 
+      ? (items[0]?.categoryId || categoryId) 
+      : categoryId;
 
     onSave({
       description,
       amount: parseFloat(amount),
       type,
       date: new Date(date),
-      categoryId,
+      categoryId: mainCategoryId,
       paymentMethodId,
       notes: notes || undefined,
-      items: items.length > 0 ? items : undefined,
+      items: isExpense && items.length > 0 ? items : undefined,
     });
   };
 
@@ -161,14 +193,17 @@ export function TransactionForm({
             </div>
           </div>
 
-          {/* Items Editor (Cupom Fiscal) */}
-          <TransactionItemsEditor
-            items={items}
-            onChange={setItems}
-            totalAmount={parseFloat(amount) || 0}
-            onTotalChange={handleTotalChange}
-            categories={categories}
-          />
+          {/* Items Editor (Cupom Fiscal) - ONLY for expenses and REQUIRED */}
+          {isExpense && (
+            <TransactionItemsEditor
+              items={items}
+              onChange={setItems}
+              totalAmount={parseFloat(amount) || 0}
+              onTotalChange={handleTotalChange}
+              categories={categories}
+              required={true}
+            />
+          )}
 
           {/* Description */}
           <div className="space-y-2">
@@ -183,25 +218,27 @@ export function TransactionForm({
             />
           </div>
 
-          {/* Category */}
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Categoria</Label>
-            <Select value={categoryId} onValueChange={setCategoryId} required>
-              <SelectTrigger className="h-12 bg-background">
-                <SelectValue placeholder="Selecione uma categoria" />
-              </SelectTrigger>
-              <SelectContent className="bg-popover max-h-60">
-                {filteredCategories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    <div className="flex items-center gap-3">
-                      <CategoryIcon name={category.icon} size={18} />
-                      <span>{category.name}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Category - ONLY for income */}
+          {!isExpense && (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">Categoria</Label>
+              <Select value={categoryId} onValueChange={setCategoryId} required>
+                <SelectTrigger className="h-12 bg-background">
+                  <SelectValue placeholder="Selecione uma categoria" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover max-h-60">
+                  {filteredCategories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      <div className="flex items-center gap-3">
+                        <CategoryIcon name={category.icon} size={18} />
+                        <span>{category.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Payment Method */}
           <div className="space-y-2">
@@ -263,6 +300,7 @@ export function TransactionForm({
             )}
             <Button
               type="submit"
+              disabled={!itemsValid}
               className={cn(
                 "flex-1 h-12 font-semibold",
                 type === 'income' ? "bg-success hover:bg-success/90" : ""
