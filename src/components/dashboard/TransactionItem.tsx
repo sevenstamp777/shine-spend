@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Receipt } from 'lucide-react';
+import { ChevronDown, ChevronUp, Receipt, Tag } from 'lucide-react';
 import { Transaction, Category, PaymentMethod } from '@/types/finance';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { CategoryIcon } from '@/components/icons/CategoryIcon';
@@ -9,6 +9,7 @@ interface TransactionItemProps {
   transaction: Transaction;
   category?: Category;
   paymentMethod?: PaymentMethod;
+  categories?: Category[]; // For looking up item categories
   onClick?: () => void;
   showDetails?: boolean;
 }
@@ -17,6 +18,7 @@ export function TransactionItem({
   transaction, 
   category, 
   paymentMethod,
+  categories = [],
   onClick,
   showDetails = false,
 }: TransactionItemProps) {
@@ -34,6 +36,18 @@ export function TransactionItem({
     e.stopPropagation();
     setIsExpanded(!isExpanded);
   };
+
+  const getCategoryById = (id: string | undefined) => {
+    if (!id) return null;
+    return categories.find(c => c.id === id);
+  };
+
+  // Get unique categories from items for summary display
+  const itemCategories = hasItems 
+    ? [...new Set(transaction.items!.map(i => i.categoryId).filter(Boolean))]
+        .map(id => getCategoryById(id))
+        .filter(Boolean) as Category[]
+    : [];
 
   return (
     <div className="bg-card rounded-xl overflow-hidden">
@@ -67,7 +81,10 @@ export function TransactionItem({
             )}
           </div>
           <p className="text-sm text-muted-foreground truncate">
-            {category?.name} • {paymentMethod?.name}
+            {hasItems && itemCategories.length > 0 
+              ? itemCategories.map(c => c.name).join(' • ')
+              : category?.name
+            } • {paymentMethod?.name}
           </p>
         </div>
 
@@ -104,25 +121,36 @@ export function TransactionItem({
               <span>Itens discriminados:</span>
             </div>
             
-            {transaction.items!.map((item, index) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between text-sm"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-muted-foreground text-xs w-4">
-                    {index + 1}.
-                  </span>
-                  <span className="truncate">{item.name}</span>
-                  <span className="text-muted-foreground text-xs flex-shrink-0">
-                    ({item.quantity}x R${item.unitPrice.toFixed(2)})
-                  </span>
+            {transaction.items!.map((item, index) => {
+              const itemCategory = getCategoryById(item.categoryId);
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-muted-foreground text-xs w-4">
+                      {index + 1}.
+                    </span>
+                    <span className="truncate">{item.name}</span>
+                    {itemCategory && (
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded flex items-center gap-1 flex-shrink-0">
+                        <Tag size={10} />
+                        {itemCategory.name}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-muted-foreground text-xs">
+                      {item.quantity}x R${item.unitPrice.toFixed(2)}
+                    </span>
+                    <span className="font-medium w-20 text-right">
+                      {formatCurrency(item.totalPrice)}
+                    </span>
+                  </div>
                 </div>
-                <span className="font-medium flex-shrink-0">
-                  {formatCurrency(item.totalPrice)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
 
             <div className="flex items-center justify-between text-sm font-semibold border-t border-border pt-2 mt-2">
               <span>Total</span>

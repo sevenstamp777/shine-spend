@@ -301,6 +301,7 @@ export function TransactionsView({
                       transaction={transaction}
                       category={getCategoryById(transaction.categoryId)}
                       paymentMethod={getPaymentMethodById(transaction.paymentMethodId)}
+                      categories={categories}
                       onClick={() => onTransactionClick(transaction)}
                       showDetails={true}
                     />

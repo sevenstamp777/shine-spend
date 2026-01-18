@@ -86,16 +86,32 @@ export function useFinanceData() {
     };
   }, [monthlyTransactions]);
 
-  // Calculate expenses by category for chart
+  // Calculate expenses by category for chart - NOW USES ITEM CATEGORIES
   const expensesByCategory: CategoryExpense[] = useMemo(() => {
     const expenseTransactions = monthlyTransactions.filter(t => t.type === 'expense');
-    const totalExpenses = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
-
+    
     const categoryMap = new Map<string, number>();
     
     expenseTransactions.forEach(t => {
-      const current = categoryMap.get(t.categoryId) || 0;
-      categoryMap.set(t.categoryId, current + t.amount);
+      // If transaction has items, use item categories
+      if (t.items && t.items.length > 0) {
+        t.items.forEach(item => {
+          if (item.categoryId) {
+            const current = categoryMap.get(item.categoryId) || 0;
+            categoryMap.set(item.categoryId, current + item.totalPrice);
+          }
+        });
+      } else {
+        // Fallback for old transactions without items: use transaction category
+        const current = categoryMap.get(t.categoryId) || 0;
+        categoryMap.set(t.categoryId, current + t.amount);
+      }
+    });
+
+    // Calculate total for percentages
+    let totalExpenses = 0;
+    categoryMap.forEach(amount => {
+      totalExpenses += amount;
     });
 
     const result: CategoryExpense[] = [];
