@@ -25,7 +25,9 @@ export interface TransactionItem {
   name: string;
   quantity: number;
   unitPrice: number;
-  totalPrice: number;
+  discount?: number; // Desconto aplicado ao item
+  totalPrice: number; // (quantity * unitPrice) - discount
+  categoryId?: string; // Categoria individual do item
 }
 
 export interface Transaction {

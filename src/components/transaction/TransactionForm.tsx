@@ -167,6 +167,7 @@ export function TransactionForm({
             onChange={setItems}
             totalAmount={parseFloat(amount) || 0}
             onTotalChange={handleTotalChange}
+            categories={categories}
           />
 
           {/* Description */}
