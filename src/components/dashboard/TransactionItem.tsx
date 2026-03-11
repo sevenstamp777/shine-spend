@@ -132,7 +132,7 @@ export function TransactionItem({
                     <span className="text-muted-foreground text-xs w-4">
                       {index + 1}.
                     </span>
-                    <span className="truncate">{item.name}</span>
+                    <span className="truncate">{item.name}{item.brand ? ` • ${item.brand}` : ''}</span>
                     {itemCategory && (
                       <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded flex items-center gap-1 flex-shrink-0">
                         <Tag size={10} />
