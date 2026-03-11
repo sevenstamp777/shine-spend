@@ -23,10 +23,14 @@ export interface PaymentMethod {
 export interface TransactionItem {
   id: string;
   name: string;
+  brand?: string;
   quantity: number;
   unitPrice: number;
-  discount?: number; // Desconto aplicado ao item
-  totalPrice: number; // (quantity * unitPrice) - discount
+  discount?: number; // Desconto em R$
+  discountPercent?: number; // Desconto em %
+  surcharge?: number; // Acréscimo em R$
+  surchargePercent?: number; // Acréscimo em %
+  totalPrice: number; // (quantity * unitPrice) - descontos + acréscimos
   categoryId?: string; // Categoria individual do item
 }
 
