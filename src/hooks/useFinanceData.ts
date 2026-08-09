@@ -17,6 +17,7 @@ import {
 } from '@/data/initialData';
 import migrated from '@/data/migrated.json';
 import { useFileSystemStorage } from './useFileSystemStorage';
+import type { FileSystemStorageData } from './useFileSystemStorage';
 
 export function useFinanceData() {
   const fileSystem = useFileSystemStorage();
@@ -67,6 +68,16 @@ export function useFinanceData() {
     }
     setIsInitialized(true);
   }, [fileSystem]);
+
+  // Import a full data snapshot (exported backup)
+  const importData = useCallback((data: FileSystemStorageData) => {
+    if (data.categories) setCategories(data.categories);
+    if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
+    if (data.products) setProducts(data.products);
+    if (data.budgets) setBudgets(data.budgets);
+    if (data.transactions) setTransactions(data.transactions);
+    setIsInitialized(true);
+  }, []);
 
   // Filter transactions by selected month
   const monthlyTransactions = useMemo(() => {
@@ -310,5 +321,6 @@ export function useFinanceData() {
     getCategoryById,
     getPaymentMethodById,
     clearAllData,
+    importData,
   };
 }

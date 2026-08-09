@@ -46,6 +46,7 @@ const Index = () => {
     deleteProduct,
     addBudget,
     deleteBudget,
+    importData,
   } = useFinanceData();
 
   // Show loading state
@@ -143,10 +144,49 @@ const Index = () => {
     toast.success('Dados migrados para arquivo!');
   };
 
+  const handleExport = () => {
+    const backup = {
+      categories,
+      paymentMethods,
+      products,
+      budgets,
+      transactions,
+      lastSaved: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `finapp-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Backup exportado!');
+  };
+
+  const handleImportFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result as string);
+        if (!parsed || typeof parsed !== 'object' || !parsed.transactions) {
+          toast.error('Arquivo de backup inválido.');
+          return;
+        }
+        importData(parsed);
+        toast.success('Dados importados com sucesso!');
+      } catch {
+        toast.error('Não foi possível ler o arquivo.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Storage indicator */}
-      <div className="bg-muted/30 border-b border-border px-4 py-2 flex items-center justify-between">
+      <div className="bg-muted/30 border-b border-border px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {fileSystem.usingFallback ? (
             <Database className="w-4 h-4" />
@@ -155,23 +195,50 @@ const Index = () => {
           )}
           <span className="font-medium text-foreground">{fileSystem.fileName}</span>
         </div>
-        {fileSystem.isSupported && fileSystem.usingFallback && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={handleSwitchToFile}
+            onClick={handleExport}
             className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+            title="Exportar backup dos dados"
           >
-            <FolderOpen className="w-3 h-3" />
-            Salvar em arquivo
+            <FileText className="w-3 h-3" />
+            Exportar
           </button>
-        )}
-        {!fileSystem.usingFallback && (
-          <button
-            onClick={fileSystem.useLocalStorage}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          <label
+            className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1 cursor-pointer"
+            title="Importar backup dos dados"
           >
-            Usar armazenamento local
-          </button>
-        )}
+            <Database className="w-3 h-3" />
+            Importar
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportFile(file);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          {fileSystem.isSupported && fileSystem.usingFallback && (
+            <button
+              onClick={handleSwitchToFile}
+              className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+            >
+              <FolderOpen className="w-3 h-3" />
+              Salvar em arquivo
+            </button>
+          )}
+          {!fileSystem.usingFallback && (
+            <button
+              onClick={fileSystem.useLocalStorage}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Usar armazenamento local
+            </button>
+          )}
+        </div>
       </div>
 
       <main className="container max-w-lg mx-auto px-4 py-4 pb-24">

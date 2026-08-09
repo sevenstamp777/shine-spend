@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-interface FileSystemStorageData {
+export interface FileSystemStorageData {
   categories: any[];
   paymentMethods: any[];
   products?: any[];
   budgets?: any[];
   transactions: any[];
-  lastSaved: string;
+  lastSaved?: string;
 }
 
 // Extend Window interface for File System Access API
