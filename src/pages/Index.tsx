@@ -12,7 +12,7 @@ import { ProductsView } from './ProductsView';
 import { BudgetsView } from './BudgetsView';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
-import { Database, FileText, FolderOpen, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { Database, FileText, FolderOpen, Cloud, CloudOff, RefreshCw, Trash2 } from 'lucide-react';
 
 type TabId = 'dashboard' | 'transactions' | 'categories' | 'payments' | 'products' | 'budgets';
 
@@ -49,6 +49,7 @@ const Index = () => {
     addBudget,
     deleteBudget,
     importData,
+    clearAllData,
   } = useFinanceData();
 
   // Show loading state
@@ -190,6 +191,14 @@ const Index = () => {
     toast.success(syncTokenInput.trim() ? 'Sincronização configurada!' : 'Sincronização desativada');
   };
 
+  const handleClearAllData = () => {
+    if (window.confirm('Apagar TODOS os dados deste aparelho? Essa ação não pode ser desfeita.')) {
+      clearAllData();
+      setSyncTokenInput('');
+      toast.success('Dados apagados. O app voltou ao estado inicial.');
+    }
+  };
+
   const syncLabel = {
     off: 'Sincronização desativada',
     syncing: 'Sincronizando...',
@@ -235,6 +244,14 @@ const Index = () => {
               }}
             />
           </label>
+          <button
+            onClick={handleClearAllData}
+            className="text-xs text-destructive hover:text-destructive/80 transition-colors flex items-center gap-1"
+            title="Apagar todos os dados deste aparelho e voltar ao estado inicial"
+          >
+            <Trash2 className="w-3 h-3" />
+            Limpar dados
+          </button>
           {fileSystem.isSupported && fileSystem.usingFallback && (
             <button
               onClick={handleSwitchToFile}

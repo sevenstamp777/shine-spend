@@ -15,12 +15,12 @@ import {
   sampleTransactions, 
   chartColors 
 } from '@/data/initialData';
-import migrated from '@/data/migrated.json';
 import { useFileSystemStorage } from './useFileSystemStorage';
 import type { FileSystemStorageData } from './useFileSystemStorage';
 import {
   getSyncToken,
   setSyncToken,
+  clearSyncToken,
   fetchSnapshot,
   pushSnapshot,
   mergeSnapshots,
@@ -32,8 +32,8 @@ export function useFinanceData() {
   const fileSystem = useFileSystemStorage();
   const [categories, setCategories] = useState<Category[]>(defaultCategories);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(defaultPaymentMethods);
-  const [products, setProducts] = useState<Product[]>(migrated.products as Product[]);
-  const [budgets, setBudgets] = useState<Budget[]>(migrated.budgets as Budget[]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>(sampleTransactions);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [isInitialized, setIsInitialized] = useState(false);
@@ -329,8 +329,11 @@ export function useFinanceData() {
     setTransactions([]);
     setCategories(defaultCategories);
     setPaymentMethods(defaultPaymentMethods);
-    setProducts(migrated.products as Product[]);
-    setBudgets(migrated.budgets as Budget[]);
+    setProducts([]);
+    setBudgets([]);
+    clearSyncToken();
+    setSyncTokenState('');
+    setSyncStatus('off');
   }, []);
 
   return {

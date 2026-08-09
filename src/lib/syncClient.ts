@@ -9,21 +9,29 @@ export interface SyncSnapshot {
 }
 
 const SYNC_TOKEN_KEY = 'finapp_sync_token';
-// Token padrão para sincronizar celular ↔ desktop (mesmo nos dois aparelhos).
-// Pode ser alterado pela barra de sincronização no topo do app.
-const DEFAULT_SYNC_TOKEN = '8859dc4195c37038878c25059f754e2b1b4e936c9773d254';
+// Sem token padrão embutido: cada pessoa que abrir o app fica com os próprios
+// dados (sem sincronizar) até digitar um token na barra de sincronização.
+// Quem usa o mesmo token compartilha os dados (ex.: celular ↔ desktop do dono).
 
 export function getSyncToken(): string {
   try {
-    return localStorage.getItem(SYNC_TOKEN_KEY) || DEFAULT_SYNC_TOKEN;
+    return localStorage.getItem(SYNC_TOKEN_KEY) || '';
   } catch {
-    return DEFAULT_SYNC_TOKEN;
+    return '';
   }
 }
 
 export function setSyncToken(token: string): void {
   try {
     localStorage.setItem(SYNC_TOKEN_KEY, token.trim());
+  } catch {
+    // ignore
+  }
+}
+
+export function clearSyncToken(): void {
+  try {
+    localStorage.removeItem(SYNC_TOKEN_KEY);
   } catch {
     // ignore
   }
