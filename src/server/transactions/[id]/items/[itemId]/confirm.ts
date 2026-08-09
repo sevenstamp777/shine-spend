@@ -1,8 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../src/api/auth/auth';
-import { db } from '../../../../../src/api/db/client';
-import { transactionItems, transactions, users } from '../../../../../src/api/db/schema';
+import { authOptions } from '../../../../../api/auth/auth';
+import { db } from '../../../../../api/db/client';
+import { transactionItems, transactions, users } from '../../../../../api/db/schema';
 import { eq, and } from 'drizzle-orm';
 
 export default async function handler(
