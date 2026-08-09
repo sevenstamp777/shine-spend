@@ -124,7 +124,7 @@ export function ReceiptScanner({ onScanComplete, onClose }: ReceiptScannerProps)
 
       const worker = await createWorker('por', 1, {
         workerPath: '/tesseract/worker.min.js',
-        corePath: '/tesseract/',
+        corePath: '/tesseract/tesseract-core-lstm.wasm.js',
         langPath: '/tesseract/',
         logger: (m: { status: string; progress: number }) => {
           if (m.status === 'recognizing text') {
