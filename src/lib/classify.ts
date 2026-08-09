@@ -18,7 +18,8 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'cerveja', 'agua', 'suco', 'cafe', 'lanche', 'esfiha', 'pizza', 'salgado',
     'doce', 'bala', 'chocolate', 'biscoito', 'bolacha', 'bolo', 'fruta', 'verdura',
     'legume', 'salgadinho', 'acougue', 'muffato', 'amigao', 'assai', 'proenca',
-    'rondon', 'bandeirante', 'loqueti',
+    'rondon', 'bandeirante', 'loqueti', 'snack', 'bisc', 'renata', 'tuit',
+    'barrinha', 'torrada',
   ],
   'alimentacao caes': [
     'racao', 'petshop', 'pet shop', 'cachorro', 'gatinho', 'gato', 'pedigree',

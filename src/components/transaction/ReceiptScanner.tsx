@@ -101,6 +101,79 @@ const cleanName = (s: string): string =>
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+// Caracteres que o OCR injeta quando um código de barras fica borrado no cupom
+// térmico ("« ESBGUITAOTA?" no lugar do EAN-13). Palavras com esses caracteres
+// são lixo e são removidas do nome do item.
+const SUSPICIOUS = /[?«»&ºª|/=%#*@$^_~`\\{}<>:;]/;
+
+// Limpa o nome do item: remove palavras-lixo do OCR (código de barras borrado,
+// letras soltas) e corta prefixos de lixo que sobram no início.
+const cleanItemName = (name: string): string => {
+  const words = cleanName(name)
+    .split(' ')
+    .map(w => w.trim())
+    .filter(w => w.length > 0)
+    .filter(w => w.length >= 2 && !SUSPICIOUS.test(w) && !/^\d{4,}$/.test(w));
+  const start = words.findIndex(w => /^[A-Za-zÀ-ú]{3,}$/.test(w));
+  return (start > 0 ? words.slice(start) : words).join(' ');
+};
+
+// Tenta extrair um item de UMA linha do cupom NFC-e/SAT no formato:
+// "002 7896022207076 BISCOITO RENATA TUIT 1,000 UN 2,19 F 2,19"
+// onde "1,000 UN" é quantidade+unidade, "2,19" preço unitário e o último
+// valor é o total da linha. O OCR costuma fundir os espaços.
+const parseStructuredLine = (line: string): OcrItem | null => {
+  let text = line;
+
+  // 1) Valores monetários (2 casas; OCR troca vírgula por ponto ou ";").
+  const valueRe = /(\d{1,3}(?:[.,;]\d{3})*[.,;]\d{2})(?![.,]?\d)/g;
+  const values: { raw: string; value: number }[] = [];
+  let vm: RegExpExecArray | null;
+  while ((vm = valueRe.exec(text))) {
+    const value = parseBrNumber(vm[1].replace(/;/g, ','));
+    if (Number.isFinite(value)) values.push({ raw: vm[1], value });
+  }
+  if (values.length === 0) return null;
+
+  const totalPrice = values[values.length - 1].value;
+  const unitPrice = values.length >= 2 ? values[values.length - 2].value : totalPrice;
+  if (!(totalPrice > 0) || totalPrice > 50000) return null;
+  if (!(unitPrice > 0) || unitPrice > 50000) return null;
+
+  // 2) Remove os valores do texto.
+  for (const v of values) text = text.replace(v.raw, ' ');
+
+  // 3) Quantidade de 3 casas + unidade ("1,000UN", "2,500KG", "1,0000N").
+  let qty = 1;
+  let unit: string | undefined;
+  const qm = text.match(/(\d{1,3}[.,;]\d{3,4})\s*([A-Za-z]{1,4})?/);
+  if (qm) {
+    const q = parseQty(qm[1].replace(/;/g, ','));
+    const rawUnit = (qm[2] || '').toUpperCase().replace(/N$/, 'UN');
+    const isKnownUnit =
+      rawUnit === 'UN' ||
+      (rawUnit !== '' && (rawUnit === 'X' || UNITS.some(u => rawUnit.startsWith(u) || u.startsWith(rawUnit))));
+    if (q > 0 && q <= 10000 && isKnownUnit) {
+      qty = q;
+      if (rawUnit !== 'X') unit = UNITS.find(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)) || 'UN';
+      text = text.replace(qm[0], ' ');
+    }
+  }
+
+  // 4) Remove códigos longos, cabeçalhos de coluna e letras soltas (ST, F, X).
+  text = text
+    .replace(/\d{8,}/g, ' ')
+    .replace(/CODIGO|CODIGA|DESCRICAO|DESCRIÇAO|DESCRIC|QTD|QUANT|UNID|VL\.?UNIT|VL ?UN|UNIT|ALIQ|ALIQUOTA|ITEM|NFC[-\s]?E|DANFE|NOTA|FISCAL|DATA|HORA/gi, ' ')
+    .replace(/\b[A-Za-z]{1,2}\b/g, ' ');
+
+  const name = cleanItemName(text);
+  if (!name || name.length < 2) return null;
+  if (NOISE_ITEM.test(name)) return null;
+
+  return { name, quantity: qty, unit, unitPrice, totalPrice };
+};
+
+
 // Distribui o desconto total do cupom proporcionalmente ao valor bruto de cada
 // item, de forma que a soma dos itens bata com o total geral. O último item
 // absorve as sobras de arredondamento.
@@ -126,79 +199,88 @@ const applyDiscount = (items: OcrItem[], discountTotal: number): OcrItem[] => {
 
 // Extrai os itens individuais do cupom de forma robusta ao OCR.
 //
-// O OCR de foto no celular pode fundir as linhas do cupom num texto corrido
-// (sem quebras de linha), então o parse NÃO depende de cada item estar em uma
-// linha própria: ele divide o texto nos valores monetários e reconstrói nome,
-// quantidade e unidade de cada item a partir do trecho que antecede o valor.
+// Primeiro tenta ler linha a linha no formato NFC-e/SAT (com quantidade,
+// unidade, preço unitário e total). Se nenhuma linha casar, cai para o parse
+// por "trecho antes do valor", que funciona quando o OCR funde o cupom num
+// texto corrido sem quebras de linha.
 const parseItems = (text: string, discountTotal = 0): OcrItem[] => {
-  const flat = text.replace(/\n+/g, ' ').replace(/\s+/g, ' ');
-  // Valor monetário: exatamente 2 casas decimais, e que não faça parte de uma
-  // quantidade fracionária ("1,500" não casa aqui porque "0" segue após ",50").
-  const valueRe = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})(?![.,]?\d)/g;
-  const parts = flat.split(valueRe);
+  const mergeItems = (list: OcrItem[]): OcrItem[] => {
+    const merged: OcrItem[] = [];
+    const seen = new Map<string, number>();
+    for (const item of list) {
+      const key = item.name.toLowerCase();
+      const idx = seen.get(key);
+      if (idx !== undefined) {
+        const prev = merged[idx];
+        prev.quantity += item.quantity;
+        prev.totalPrice += item.totalPrice;
+        prev.unitPrice = prev.totalPrice / prev.quantity;
+      } else {
+        seen.set(key, merged.length);
+        merged.push({ ...item });
+      }
+    }
+    return merged;
+  };
+
+  const lines = text
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
 
   const items: OcrItem[] = [];
-  const seen = new Map<string, number>();
-  let pending = '';
+  for (const line of lines) {
+    const item = parseStructuredLine(line);
+    if (item) items.push(item);
+  }
 
-  for (const part of parts) {
-    const valueMatch = part.match(/^\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*$/);
-    if (valueMatch) {
-      const totalPrice = parseBrNumber(valueMatch[1]);
-      if (totalPrice > 0 && totalPrice <= 50000) {
-        const rawName = cleanName(pending);
-        let qty = 1;
-        let unit: string | undefined;
-        let name: string | undefined;
+  if (items.length === 0) {
+    // Fallback: texto corrido (SAT com linhas fundidas pelo OCR).
+    const flat = text.replace(/\n+/g, ' ').replace(/\s+/g, ' ');
+    const valueRe = /(\d{1,3}(?:[.,;]\d{3})*[.,;]\d{2})(?![.,]?\d)/g;
+    const parts = flat.split(valueRe);
 
-        // Quantidade + unidade no início do item, padrão cupom fiscal:
-        // "2 UN COCA" | "1,500 KG CARNE" | "0,100 L LEITE" | "3 X PACOTE" | "1,200 M2 FORRO"
-        const uq = rawName.match(/^([\d]+(?:[.,]\d+)?)\s*([A-Za-z]{1,4}|M2|M²|KG|ML|G|L)?\s+(.+)$/);
-        if (uq) {
-          const parsedQty = parseQty(uq[1]);
-          const rawUnit = (uq[2] || '').toUpperCase();
-          // Só aceita como unidade se for conhecida (evita "1 PNEU ARO 13")
-          const isKnownUnit =
-            rawUnit !== '' &&
-            (rawUnit === 'X' || UNITS.some(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)));
-          if (parsedQty > 0 && parsedQty <= 10000 && isKnownUnit) {
-            qty = parsedQty;
-            if (rawUnit !== 'X') {
-              unit = UNITS.find(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)) || rawUnit;
+    let pending = '';
+    for (const part of parts) {
+      const valueMatch = part.match(/^\s*(\d{1,3}(?:[.,;]\d{3})*[.,;]\d{2})\s*$/);
+      if (valueMatch) {
+        const totalPrice = parseBrNumber(valueMatch[1].replace(/;/g, ','));
+        if (totalPrice > 0 && totalPrice <= 50000) {
+          const rawName = cleanName(pending);
+          let qty = 1;
+          let unit: string | undefined;
+          let name: string | undefined;
+
+          const uq = rawName.match(/^([\d]+(?:[.,]\d+)?)\s*([A-Za-z]{1,4}|M2|M²|KG|ML|G|L)?\s+(.+)$/);
+          if (uq) {
+            const parsedQty = parseQty(uq[1]);
+            const rawUnit = (uq[2] || '').toUpperCase();
+            const isKnownUnit =
+              rawUnit !== '' &&
+              (rawUnit === 'X' || UNITS.some(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)));
+            if (parsedQty > 0 && parsedQty <= 10000 && isKnownUnit) {
+              qty = parsedQty;
+              if (rawUnit !== 'X') {
+                unit = UNITS.find(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)) || rawUnit;
+              }
+              name = cleanName(uq[3]);
             }
-            name = cleanName(uq[3]);
+          }
+
+          if (!name) name = cleanItemName(rawName).replace(/^\d{1,3}\s+/, '');
+
+          if (name && name.length >= 2 && !NOISE_ITEM.test(name)) {
+            items.push({ name, quantity: qty, unit, totalPrice, unitPrice: qty > 0 ? totalPrice / qty : totalPrice });
           }
         }
-
-        // Sem quantidade/unidade: remove número de item ("02 ARROZ" → "ARROZ")
-        if (!name) name = cleanName(rawName).replace(/^\d{1,3}\s+/, '');
-
-        if (name && name.length >= 2 && !NOISE_ITEM.test(name)) {
-          const key = name.toLowerCase();
-          const idx = seen.get(key);
-          if (idx !== undefined) {
-            items[idx].quantity += qty;
-            items[idx].totalPrice += totalPrice;
-            items[idx].unitPrice = items[idx].totalPrice / items[idx].quantity;
-          } else {
-            seen.set(key, items.length);
-            items.push({
-              name,
-              quantity: qty,
-              unit,
-              totalPrice,
-              unitPrice: qty > 0 ? totalPrice / qty : totalPrice,
-            });
-          }
-        }
+        pending = '';
+      } else {
+        pending += ' ' + part;
       }
-      pending = '';
-    } else {
-      pending += ' ' + part;
     }
   }
 
-  return applyDiscount(items, discountTotal).slice(0, 50);
+  return applyDiscount(mergeItems(items), discountTotal).slice(0, 50);
 };
 
 const parseDescription = (text: string): string => {
@@ -216,26 +298,34 @@ const parseDescription = (text: string): string => {
   return 'Comprovante';
 };
 
-// Aplica escala de cinza + aumento de contraste (cupom térmico) para o OCR
-// reconhecer melhor o texto pequeno impresso.
+// Aplica escala de cinza + binarização para o OCR ler o texto pequeno do
+// cupom térmico. O limiar é a média global de brilho (fundo branco fica 255,
+// texto escuro fica 0), o que melhora bastante a leitura dos itens e preços.
 const enhanceImage = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
-  const contrast = 1.8;
+  const n = width * height;
+  let sum = 0;
   for (let i = 0; i < data.length; i += 4) {
     const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    let g = (gray - 128) * contrast + 128;
-    g = g < 0 ? 0 : g > 255 ? 255 : g;
-    data[i] = g;
-    data[i + 1] = g;
-    data[i + 2] = g;
+    data[i] = gray;
+    data[i + 1] = gray;
+    data[i + 2] = gray;
+    sum += gray;
+  }
+  const threshold = (sum / n) * 0.9;
+  for (let i = 0; i < data.length; i += 4) {
+    const v = data[i] < threshold ? 0 : 255;
+    data[i] = v;
+    data[i + 1] = v;
+    data[i + 2] = v;
   }
   ctx.putImageData(imageData, 0, 0);
 };
 
 // Redimensiona, normaliza e comprime a imagem antes do OCR para acelerar e
 // melhorar a leitura no celular
-const resizeImage = (file: File, maxDim = 1600): Promise<Blob> => {
+const resizeImage = (file: File, maxDim = 2000): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
