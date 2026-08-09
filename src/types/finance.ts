@@ -57,3 +57,17 @@ export interface CategoryExpense {
   percentage: number;
   color: string;
 }
+
+// Produto do catálogo (autocomplete e histórico)
+export interface Product {
+  id: string;
+  name: string;
+  categoryId?: string;
+}
+
+// Limite mensal por categoria
+export interface Budget {
+  categoryId: string;
+  categoryName: string;
+  limit: number;
+}

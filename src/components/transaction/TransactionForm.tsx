@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Camera } from 'lucide-react';
 import { Transaction, TransactionType, TransactionItem, Category, PaymentMethod } from '@/types/finance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { CategoryIcon, PaymentMethodIcon } from '@/components/icons/CategoryIcon';
 import { TransactionItemsEditor } from './TransactionItemsEditor';
+import { ReceiptScanner, OcrResult } from './ReceiptScanner';
 import { cn } from '@/lib/utils';
 
 interface TransactionFormProps {
@@ -45,6 +46,7 @@ export function TransactionForm({
   );
   const [notes, setNotes] = useState(transaction?.notes || '');
   const [items, setItems] = useState<TransactionItem[]>(transaction?.items || []);
+  const [showScanner, setShowScanner] = useState(false);
 
   const filteredCategories = categories.filter(c => c.type === type);
 
@@ -123,6 +125,30 @@ export function TransactionForm({
     setAmount(total.toFixed(2));
   };
 
+  const handleOcrResult = (result: OcrResult) => {
+    if (result.description && result.description !== 'Comprovante') {
+      setDescription(result.description);
+    }
+    if (result.amount !== null) {
+      setAmount(result.amount.toFixed(2));
+      // Se a transação tem itens obrigatórios (despesa), cria um item espelho
+      if (type === 'expense') {
+        const desc = result.description || 'Item';
+        const newItem: TransactionItem = {
+          id: `item-${Date.now()}`,
+          name: desc,
+          quantity: 1,
+          unitPrice: result.amount,
+          totalPrice: result.amount,
+        };
+        setItems([newItem]);
+      }
+    }
+    if (result.date) {
+      setDate(result.date);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div 
@@ -173,6 +199,17 @@ export function TransactionForm({
               Receita
             </button>
           </div>
+
+          {/* Scan Receipt */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowScanner(true)}
+            className="w-full mt-3 h-11 gap-2 border-primary/40 text-primary hover:bg-primary/10"
+          >
+            <Camera size={18} />
+            Escanear nota / recibo com a câmera
+          </Button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
@@ -314,6 +351,13 @@ export function TransactionForm({
           </div>
         </form>
       </div>
+
+      {showScanner && (
+        <ReceiptScanner
+          onScanComplete={handleOcrResult}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
     </div>
   );
 }

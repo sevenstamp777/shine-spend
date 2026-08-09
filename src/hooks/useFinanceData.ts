@@ -4,21 +4,27 @@ import {
   Category, 
   PaymentMethod, 
   Transaction, 
+  Product,
+  Budget,
   MonthlyBalance, 
   CategoryExpense 
 } from '@/types/finance';
 import { 
   defaultCategories, 
   defaultPaymentMethods, 
+  sampleTransactions, 
   chartColors 
 } from '@/data/initialData';
+import migrated from '@/data/migrated.json';
 import { useFileSystemStorage } from './useFileSystemStorage';
 
 export function useFinanceData() {
   const fileSystem = useFileSystemStorage();
   const [categories, setCategories] = useState<Category[]>(defaultCategories);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(defaultPaymentMethods);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [products, setProducts] = useState<Product[]>(migrated.products as Product[]);
+  const [budgets, setBudgets] = useState<Budget[]>(migrated.budgets as Budget[]);
+  const [transactions, setTransactions] = useState<Transaction[]>(sampleTransactions);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [isInitialized, setIsInitialized] = useState(false);
   const isFirstLoad = useRef(true);
@@ -32,6 +38,8 @@ export function useFinanceData() {
         if (data) {
           if (data.categories?.length) setCategories(data.categories);
           if (data.paymentMethods?.length) setPaymentMethods(data.paymentMethods);
+          if (data.products?.length) setProducts(data.products);
+          if (data.budgets?.length) setBudgets(data.budgets);
           if (data.transactions) setTransactions(data.transactions);
         }
         setIsInitialized(true);
@@ -43,9 +51,9 @@ export function useFinanceData() {
   // Save data whenever it changes (after initialization)
   useEffect(() => {
     if (fileSystem.isReady && isInitialized) {
-      fileSystem.saveData({ categories, paymentMethods, transactions });
+      fileSystem.saveData({ categories, paymentMethods, products, budgets, transactions });
     }
-  }, [categories, paymentMethods, transactions, fileSystem.isReady, isInitialized, fileSystem.saveData]);
+  }, [categories, paymentMethods, products, budgets, transactions, fileSystem.isReady, isInitialized, fileSystem.saveData]);
 
   // Handle file selection and load data
   const connectToFile = useCallback(async () => {
@@ -53,6 +61,8 @@ export function useFinanceData() {
     if (data) {
       if (data.categories?.length) setCategories(data.categories);
       if (data.paymentMethods?.length) setPaymentMethods(data.paymentMethods);
+      if (data.products?.length) setProducts(data.products);
+      if (data.budgets?.length) setBudgets(data.budgets);
       if (data.transactions) setTransactions(data.transactions);
     }
     setIsInitialized(true);
@@ -205,11 +215,51 @@ export function useFinanceData() {
     return paymentMethods.find(m => m.id === id);
   }, [paymentMethods]);
 
+  const addProduct = useCallback((product: Omit<Product, 'id'>) => {
+    const newProduct: Product = {
+      ...product,
+      id: `prod-${Date.now()}`,
+    };
+    setProducts(prev => [...prev, newProduct]);
+  }, []);
+
+  const updateProduct = useCallback((id: string, updates: Partial<Product>) => {
+    setProducts(prev =>
+      prev.map(p => p.id === id ? { ...p, ...updates } : p)
+    );
+  }, []);
+
+  const deleteProduct = useCallback((id: string) => {
+    setProducts(prev => prev.filter(p => p.id !== id));
+  }, []);
+
+  const addBudget = useCallback((budget: Omit<Budget, 'categoryId' | 'categoryName'> & { categoryId: string; categoryName: string }) => {
+    setBudgets(prev => {
+      const existing = prev.find(b => b.categoryId === budget.categoryId);
+      if (existing) {
+        return prev.map(b => b.categoryId === budget.categoryId ? { ...b, ...budget } : b);
+      }
+      return [...prev, budget];
+    });
+  }, []);
+
+  const updateBudget = useCallback((categoryId: string, limit: number) => {
+    setBudgets(prev =>
+      prev.map(b => b.categoryId === categoryId ? { ...b, limit } : b)
+    );
+  }, []);
+
+  const deleteBudget = useCallback((categoryId: string) => {
+    setBudgets(prev => prev.filter(b => b.categoryId !== categoryId));
+  }, []);
+
   // Clear all data
   const clearAllData = useCallback(() => {
     setTransactions([]);
     setCategories(defaultCategories);
     setPaymentMethods(defaultPaymentMethods);
+    setProducts(migrated.products as Product[]);
+    setBudgets(migrated.budgets as Budget[]);
   }, []);
 
   return {
@@ -228,6 +278,8 @@ export function useFinanceData() {
     // Data
     categories,
     paymentMethods,
+    products,
+    budgets,
     transactions,
     monthlyTransactions,
     monthlyBalance,
@@ -249,6 +301,12 @@ export function useFinanceData() {
     addPaymentMethod,
     updatePaymentMethod,
     deletePaymentMethod,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    addBudget,
+    updateBudget,
+    deleteBudget,
     getCategoryById,
     getPaymentMethodById,
     clearAllData,

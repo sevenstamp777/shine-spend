@@ -8,11 +8,13 @@ import { DashboardView } from './DashboardView';
 import { TransactionsView } from './TransactionsView';
 import { CategoriesView } from './CategoriesView';
 import { PaymentMethodsView } from './PaymentMethodsView';
+import { ProductsView } from './ProductsView';
+import { BudgetsView } from './BudgetsView';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { Database, FileText, FolderOpen } from 'lucide-react';
 
-type TabId = 'dashboard' | 'transactions' | 'categories' | 'payments';
+type TabId = 'dashboard' | 'transactions' | 'categories' | 'payments' | 'products' | 'budgets';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
@@ -23,6 +25,8 @@ const Index = () => {
     fileSystem,
     categories,
     paymentMethods,
+    products,
+    budgets,
     transactions,
     monthlyBalance,
     expensesByCategory,
@@ -38,6 +42,10 @@ const Index = () => {
     addPaymentMethod,
     updatePaymentMethod,
     deletePaymentMethod,
+    addProduct,
+    deleteProduct,
+    addBudget,
+    deleteBudget,
   } = useFinanceData();
 
   // Show loading state
@@ -108,6 +116,26 @@ const Index = () => {
   const handleDeletePaymentMethod = (id: string) => {
     deletePaymentMethod(id);
     toast.success('Meio de pagamento excluído!');
+  };
+
+  const handleAddProduct = (product: Omit<typeof products[0], 'id'>) => {
+    addProduct(product);
+    toast.success('Produto cadastrado!');
+  };
+
+  const handleDeleteProduct = (id: string) => {
+    deleteProduct(id);
+    toast.success('Produto excluído!');
+  };
+
+  const handleAddBudget = (budget: { categoryId: string; categoryName: string; limit: number }) => {
+    addBudget(budget);
+    toast.success('Orçamento definido!');
+  };
+
+  const handleDeleteBudget = (categoryId: string) => {
+    deleteBudget(categoryId);
+    toast.success('Orçamento removido!');
   };
 
   const handleSwitchToFile = async () => {
@@ -185,6 +213,25 @@ const Index = () => {
             onAddPaymentMethod={handleAddPaymentMethod}
             onUpdatePaymentMethod={handleUpdatePaymentMethod}
             onDeletePaymentMethod={handleDeletePaymentMethod}
+          />
+        )}
+
+        {activeTab === 'products' && (
+          <ProductsView
+            products={products}
+            categories={categories}
+            onAddProduct={handleAddProduct}
+            onDeleteProduct={handleDeleteProduct}
+          />
+        )}
+
+        {activeTab === 'budgets' && (
+          <BudgetsView
+            budgets={budgets}
+            categories={categories}
+            transactions={transactions}
+            onAddBudget={handleAddBudget}
+            onDeleteBudget={handleDeleteBudget}
           />
         )}
       </main>

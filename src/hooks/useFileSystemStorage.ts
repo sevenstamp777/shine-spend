@@ -3,6 +3,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 interface FileSystemStorageData {
   categories: any[];
   paymentMethods: any[];
+  products?: any[];
+  budgets?: any[];
   transactions: any[];
   lastSaved: string;
 }
