@@ -1,12 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, Tag, Percent } from 'lucide-react';
 import { TransactionItem, Category } from '@/types/finance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/lib/formatters';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { CategoryIcon } from '@/components/icons/CategoryIcon';
 
 // Campo numérico que aceita digitação no mobile (type=text + inputMode=decimal).
-// Mantém o texto digitado localmente e só converte p/ número ao sair do campo (blur).
+// O texto digitado fica no estado local e o valor numérico é enviado ao pai a
+// cada mudança (não depende do evento blur, que no mobile pode não disparar
+// antes de tocar em outro botão). Aceita vírgula como separador decimal.
 interface NumberFieldProps {
   value: number;
   onChange: (value: number) => void;
@@ -18,14 +28,28 @@ interface NumberFieldProps {
 
 function NumberField({ value, onChange, placeholder, className, title, onEnter }: NumberFieldProps) {
   const [text, setText] = useState(value > 0 ? String(value) : '');
+  const focused = useRef(false);
 
+  // Sincroniza o texto apenas quando o valor externo muda e o campo não está
+  // em edição (evita apagar o que o usuário está digitando).
   useEffect(() => {
-    setText(value > 0 ? String(value) : '');
+    if (!focused.current) {
+      setText(value > 0 ? String(value) : '');
+    }
   }, [value]);
 
-  const commit = () => {
-    const n = parseFloat(text.replace(',', '.'));
+  const handleChange = (raw: string) => {
+    setText(raw);
+    const n = parseFloat(raw.replace(',', '.'));
     onChange(Number.isFinite(n) ? n : 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      (e.target as HTMLInputElement).blur();
+      setTimeout(() => onEnter?.(), 0);
+    }
   };
 
   return (
@@ -33,30 +57,16 @@ function NumberField({ value, onChange, placeholder, className, title, onEnter }
       type="text"
       inputMode="decimal"
       value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          commit();
-          (e.target as HTMLInputElement).blur();
-          setTimeout(() => onEnter?.(), 0);
-        }
-      }}
+      onChange={(e) => handleChange(e.target.value)}
+      onFocus={() => (focused.current = true)}
+      onBlur={() => (focused.current = false)}
+      onKeyDown={handleKeyDown}
       placeholder={placeholder}
       className={className}
       title={title}
     />
   );
 }
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { CategoryIcon } from '@/components/icons/CategoryIcon';
 
 interface TransactionItemsEditorProps {
   items: TransactionItem[];
