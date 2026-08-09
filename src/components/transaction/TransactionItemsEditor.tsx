@@ -1,9 +1,54 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Trash2, Tag, Percent } from 'lucide-react';
 import { TransactionItem, Category } from '@/types/finance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/lib/formatters';
+
+// Campo numérico que aceita digitação no mobile (type=text + inputMode=decimal).
+// Mantém o texto digitado localmente e só converte p/ número ao sair do campo (blur).
+interface NumberFieldProps {
+  value: number;
+  onChange: (value: number) => void;
+  placeholder?: string;
+  className?: string;
+  title?: string;
+  onEnter?: () => void;
+}
+
+function NumberField({ value, onChange, placeholder, className, title, onEnter }: NumberFieldProps) {
+  const [text, setText] = useState(value > 0 ? String(value) : '');
+
+  useEffect(() => {
+    setText(value > 0 ? String(value) : '');
+  }, [value]);
+
+  const commit = () => {
+    const n = parseFloat(text.replace(',', '.'));
+    onChange(Number.isFinite(n) ? n : 0);
+  };
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commit();
+          (e.target as HTMLInputElement).blur();
+          setTimeout(() => onEnter?.(), 0);
+        }
+      }}
+      placeholder={placeholder}
+      className={className}
+      title={title}
+    />
+  );
+}
 import {
   Select,
   SelectContent,
@@ -217,13 +262,10 @@ export function TransactionItemsEditor({
 
                   {/* Row 3: Qty, Unit, Price, Discount, Total */}
                   <div className="flex items-center gap-2 pl-7">
-                    <Input
-                      type="number"
+                    <NumberField
                       value={item.quantity}
-                      onChange={(e) => handleUpdateItem(item.id, 'quantity', e.target.value)}
+                      onChange={(v) => handleUpdateItem(item.id, 'quantity', String(v))}
                       className="w-14 h-8 text-sm text-center"
-                      min="0"
-                      step="0.01"
                       title="Quantidade"
                     />
                     <Input
@@ -239,25 +281,19 @@ export function TransactionItemsEditor({
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                         R$
                       </span>
-                      <Input
-                        type="number"
+                      <NumberField
                         value={item.unitPrice}
-                        onChange={(e) => handleUpdateItem(item.id, 'unitPrice', e.target.value)}
+                        onChange={(v) => handleUpdateItem(item.id, 'unitPrice', String(v))}
                         className="h-8 text-sm pl-7"
-                        min="0"
-                        step="0.01"
                         title="Preço unitário"
                       />
                     </div>
                     <div className="relative w-20">
                       <Percent size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        type="number"
-                        value={item.discount || ''}
-                        onChange={(e) => handleUpdateItem(item.id, 'discount', e.target.value)}
+                      <NumberField
+                        value={item.discount || 0}
+                        onChange={(v) => handleUpdateItem(item.id, 'discount', String(v))}
                         className="h-8 text-sm pl-7 text-green-600"
-                        min="0"
-                        step="0.01"
                         placeholder="Desc."
                         title="Desconto em R$"
                       />
@@ -361,14 +397,12 @@ export function TransactionItemsEditor({
 
           {/* Qty, Unit, Price, Discount */}
           <div className="flex gap-2">
-            <Input
-              type="number"
-              value={newItemQty}
-              onChange={(e) => setNewItemQty(e.target.value)}
+            <NumberField
+              value={parseFloat(newItemQty) || 0}
+              onChange={(v) => setNewItemQty(v ? String(v) : '')}
               placeholder="Qtd"
               className="w-16 h-9 text-center"
-              min="0"
-              step="0.01"
+              title="Quantidade"
             />
             <Input
               type="text"
@@ -383,27 +417,23 @@ export function TransactionItemsEditor({
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                 R$
               </span>
-              <Input
-                type="number"
-                value={newItemPrice}
-                onChange={(e) => setNewItemPrice(e.target.value)}
+              <NumberField
+                value={parseFloat(newItemPrice) || 0}
+                onChange={(v) => setNewItemPrice(v ? String(v) : '')}
                 placeholder="Preço"
                 className="h-9 pl-7"
-                min="0"
-                step="0.01"
-                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddItem())}
+                title="Preço unitário"
+                onEnter={handleAddItem}
               />
             </div>
             <div className="relative w-24">
               <Percent size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="number"
-                value={newItemDiscount}
-                onChange={(e) => setNewItemDiscount(e.target.value)}
+              <NumberField
+                value={parseFloat(newItemDiscount) || 0}
+                onChange={(v) => setNewItemDiscount(v ? String(v) : '')}
                 placeholder="Desc."
                 className="h-9 pl-7"
-                min="0"
-                step="0.01"
+                title="Desconto em R$"
               />
             </div>
             <Button
