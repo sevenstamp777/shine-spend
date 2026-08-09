@@ -142,7 +142,7 @@ export function TransactionItem({
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-muted-foreground text-xs">
-                      {item.quantity}x R${item.unitPrice.toFixed(2)}
+                      {item.quantity}{item.unit ? ` ${item.unit}` : 'x'} R${item.unitPrice.toFixed(2)}
                     </span>
                     <span className="font-medium w-20 text-right">
                       {formatCurrency(item.totalPrice)}

@@ -32,6 +32,7 @@ export function TransactionItemsEditor({
 }: TransactionItemsEditorProps) {
   const [newItemName, setNewItemName] = useState('');
   const [newItemQty, setNewItemQty] = useState('1');
+  const [newItemUnit, setNewItemUnit] = useState('');
   const [newItemPrice, setNewItemPrice] = useState('');
   const [newItemDiscount, setNewItemDiscount] = useState('');
   const [newItemCategoryId, setNewItemCategoryId] = useState('');
@@ -62,6 +63,7 @@ export function TransactionItemsEditor({
       id: `item-${Date.now()}`,
       name: newItemName.trim(),
       quantity: qty,
+      unit: newItemUnit.trim() || undefined,
       unitPrice: price,
       discount: discount > 0 ? discount : undefined,
       totalPrice: calculateItemTotal(qty, price, discount),
@@ -71,6 +73,7 @@ export function TransactionItemsEditor({
     onChange([...items, newItem]);
     setNewItemName('');
     setNewItemQty('1');
+    setNewItemUnit('');
     setNewItemPrice('');
     setNewItemDiscount('');
     setNewItemCategoryId('');
@@ -90,12 +93,14 @@ export function TransactionItemsEditor({
       if (item.id !== id) return item;
 
       const updated = { ...item };
-      
+
       if (field === 'name') {
         updated.name = value;
       } else if (field === 'quantity') {
         updated.quantity = parseFloat(value) || 0;
         updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0);
+      } else if (field === 'unit') {
+        updated.unit = value || undefined;
       } else if (field === 'unitPrice') {
         updated.unitPrice = parseFloat(value) || 0;
         updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0);
@@ -210,7 +215,7 @@ export function TransactionItemsEditor({
                     </Select>
                   </div>
 
-                  {/* Row 3: Qty, Price, Discount, Total */}
+                  {/* Row 3: Qty, Unit, Price, Discount, Total */}
                   <div className="flex items-center gap-2 pl-7">
                     <Input
                       type="number"
@@ -220,6 +225,14 @@ export function TransactionItemsEditor({
                       min="0"
                       step="0.01"
                       title="Quantidade"
+                    />
+                    <Input
+                      type="text"
+                      value={item.unit || ''}
+                      onChange={(e) => handleUpdateItem(item.id, 'unit', e.target.value)}
+                      className="w-11 h-8 text-sm text-center"
+                      placeholder="UN"
+                      title="Unidade de medida (UN, KG, L, ML, G...)"
                     />
                     <span className="text-muted-foreground text-sm">×</span>
                     <div className="relative w-20">
@@ -346,7 +359,7 @@ export function TransactionItemsEditor({
             </Select>
           </div>
 
-          {/* Qty, Price, Discount */}
+          {/* Qty, Unit, Price, Discount */}
           <div className="flex gap-2">
             <Input
               type="number"
@@ -356,6 +369,15 @@ export function TransactionItemsEditor({
               className="w-16 h-9 text-center"
               min="0"
               step="0.01"
+            />
+            <Input
+              type="text"
+              value={newItemUnit}
+              onChange={(e) => setNewItemUnit(e.target.value)}
+              placeholder="UN"
+              className="w-12 h-9 text-center"
+              maxLength={4}
+              title="Unidade (UN, KG, L, ML, G...)"
             />
             <div className="relative flex-1">
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">

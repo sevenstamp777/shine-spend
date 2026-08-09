@@ -24,6 +24,7 @@ export interface TransactionItem {
   id: string;
   name: string;
   quantity: number;
+  unit?: string; // Unidade de medida: UN, KG, L, ML, G, CX, etc.
   unitPrice: number;
   discount?: number; // Desconto aplicado ao item
   totalPrice: number; // (quantity * unitPrice) - discount

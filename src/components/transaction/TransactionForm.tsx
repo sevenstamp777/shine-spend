@@ -129,9 +129,27 @@ export function TransactionForm({
     if (result.description && result.description !== 'Comprovante') {
       setDescription(result.description);
     }
-    if (result.amount !== null) {
+
+    // Itens lidos do cupom (com quantidade, unidade e categoria sugerida)
+    if (result.items.length > 0) {
+      const newItems: TransactionItem[] = result.items.map((item, index) => ({
+        id: `item-${Date.now()}-${index}`,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice,
+        categoryId: item.categoryId,
+      }));
+      setItems(newItems);
+
+      // Soma dos itens como valor (mais preciso que o total lido, que pode
+      // incluir troco/arredondamentos)
+      const sum = newItems.reduce((acc, it) => acc + it.totalPrice, 0);
+      if (sum > 0) setAmount(sum.toFixed(2));
+    } else if (result.amount !== null) {
       setAmount(result.amount.toFixed(2));
-      // Se a transação tem itens obrigatórios (despesa), cria um item espelho
+      // Sem itens lidos, cria um item espelho para a despesa
       if (type === 'expense') {
         const desc = result.description || 'Item';
         const newItem: TransactionItem = {
@@ -144,6 +162,7 @@ export function TransactionForm({
         setItems([newItem]);
       }
     }
+
     if (result.date) {
       setDate(result.date);
     }
@@ -356,6 +375,7 @@ export function TransactionForm({
         <ReceiptScanner
           onScanComplete={handleOcrResult}
           onClose={() => setShowScanner(false)}
+          categories={categories}
         />
       )}
     </div>
