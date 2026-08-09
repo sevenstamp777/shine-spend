@@ -1,26 +1,4 @@
 {
-  "env": [
-    {
-      "key": "DATABASE_URL",
-      "description": "Neon Postgres connection string"
-    },
-    {
-      "key": "GITHUB_ID",
-      "description": "GitHub OAuth App ID"
-    },
-    {
-      "key": "GITHUB_SECRET",
-      "description": "GitHub OAuth App Secret"
-    },
-    {
-      "key": "NEXTAUTH_URL",
-      "description": "NextAuth URL"
-    },
-    {
-      "key": "NEXTAUTH_SECRET",
-      "description": "NextAuth Secret"
-    }
-  ],
   "rewrites": [
     {
       "source": "/(.*)",
