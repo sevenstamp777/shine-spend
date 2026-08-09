@@ -5,12 +5,15 @@ import { createWorker } from 'tesseract.js';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Category } from '@/types/finance';
+import { classifyText } from '@/lib/classify';
 
 export interface OcrItem {
   name: string;
   quantity: number;
   unit?: string;
   unitPrice: number;
+  discount?: number;
+  discountType?: 'amount' | 'percent';
   totalPrice: number;
   categoryId?: string;
 }
@@ -28,92 +31,6 @@ interface ReceiptScannerProps {
   onClose: () => void;
   categories: Category[];
 }
-
-// Remoção de acentos + caixa baixa para casar palavras-chave
-const normalize = (s: string): string =>
-  s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-
-// Palavras-chave por categoria (nome normalizado). Chaves mais longas
-// (ex: "saúde cães") têm prioridade sobre as genéricas ("saúde").
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  alimentacao: [
-    'mercado', 'supermercado', 'atacadao', 'padaria', 'feira', 'hortifruti', 'horti',
-    'pao', 'leite', 'arroz', 'feijao', 'macarrao', 'oleo', 'acucar', 'farinha',
-    'carne', 'frios', 'queijo', 'presunto', 'laticinio', 'bebida', 'refrigerante',
-    'cerveja', 'agua', 'suco', 'cafe', 'lanche', 'esfiha', 'pizza', 'salgado',
-    'doce', 'bala', 'chocolate', 'biscoito', 'bolacha', 'bolo', 'fruta', 'verdura',
-    'legume', 'salgadinho', 'acougue', 'muffato', 'amigao', 'assai', 'proenca',
-    'rondon', 'bandeirante', 'loqueti',
-  ],
-  'alimentacao caes': [
-    'racao', 'petshop', 'pet shop', 'cachorro', 'gatinho', 'gato', 'pedigree',
-    'whiskas', 'puppy', 'osso', 'petisco', 'parada animal', 'pantanal',
-  ],
-  carro: [
-    'pneu', 'oficina', 'mecanico', 'mecanica', 'autopecas', 'bateria', 'revisao',
-    'escapamento', 'alinhamento', 'balanceamento', 'lavagem', 'estacionamento',
-    'seguro auto', 'multa', 'youse',
-  ],
-  casa: [
-    'gas', 'condominio', 'moveis', 'mobilia', 'utensilio', 'ferragem', 'ferramenta',
-    'lampada', 'tinta', 'hidraulica', 'eletrica', 'martelo', 'casa osasco', 'osasco',
-  ],
-  combustivel: [
-    'posto', 'gasolina', 'etanol', 'alcool', 'diesel', 'gnv', 'combustivel',
-    'ipiranga', 'shell', 'br', 'tanaka', 'lalo', 'estoril', 'colina',
-  ],
-  'higiene pessoal': [
-    'shampoo', 'sabonete', 'creme dental', 'papel higienico', 'desodorante',
-    'perfume', 'perfumaria', 'cosmetico', 'gilete', 'condicionador', 'higiene',
-    'pasta de dente', 'sabao', 'detergente',
-  ],
-  igreja: ['dizimo', 'oferta', 'igreja', 'congregacao', 'landmark'],
-  moradia: ['aluguel', 'condominio'],
-  negocios: [
-    'negocio', 'loja', 'estoque', 'fornecedor', 'material escritorio', 'sebrae',
-    'canhoto', 'embalagem', 'etiqueta',
-  ],
-  saude: [
-    'farmacia', 'drogaria', 'remedio', 'medicamento', 'consulta', 'medico',
-    'clinica', 'dentista', 'exame', 'hospital', 'fisioterapia', 'psicologo',
-    'raia', 'total', 'univet', 'cobasi',
-  ],
-  'saude caes': ['veterinario', 'vet', 'castracao', 'vacina pet', 'consulta pet'],
-  telefone: ['tim', 'vivo', 'claro', 'oi', 'telefone', 'celular', 'internet', 'fibra', 'plano'],
-};
-
-const normalizeCategory = (category: Category) => normalize(category.name);
-
-// Encontra a categoria mais provável para um item via palavras-chave.
-const classifyCategory = (name: string, categories: Category[]): string | undefined => {
-  if (categories.length === 0) return undefined;
-  const itemName = normalize(name);
-
-  // Ordena chaves por tamanho (mais específicas primeiro)
-  const keys = Object.keys(CATEGORY_KEYWORDS).sort((a, b) => b.length - a.length);
-
-  for (const key of keys) {
-    const keywords = CATEGORY_KEYWORDS[key];
-    const cat = categories.find(c => normalizeCategory(c) === key);
-    if (!cat) continue;
-
-    for (const kw of keywords) {
-      // Keywords curtas casam como palavra inteira (evita "oi" dentro de "noite")
-      const hit = kw.length < 4
-        ? new RegExp(`\\b${kw}\\b`).test(itemName)
-        : itemName.includes(kw);
-      if (hit) return cat.id;
-    }
-  }
-
-  // Fallback: categoria "Outros"
-  const others = categories.find(c => normalizeCategory(c) === 'outros');
-  return others?.id;
-};
 
 const parseDate = (text: string): string => {
   const match = text.match(/(\d{2})[/.](\d{2})[/.](\d{4})/);
@@ -136,16 +53,25 @@ const parseAmount = (text: string): number | null => {
   for (const p of patterns) {
     const m = text.match(p);
     if (m) {
-      const raw = (m[1] || m[2] || '').replace(/\./g, '').replace(',', '.');
-      const v = parseFloat(raw);
+      const v = parseBrNumber(m[1] || m[2] || '');
       if (!isNaN(v) && v > 0) return v;
     }
   }
   return null;
 };
 
+// Desconto total aplicado no cupom (linha "DESCONTO X,XX" sobre o subtotal)
+const parseDiscount = (text: string): number => {
+  const m = text.match(/(?:DESCONTO|DESC\.?|DESCOMP)\s*[R$:]*\s*([\d.,]+)/i);
+  if (m) {
+    const v = parseBrNumber(m[1]);
+    if (!isNaN(v) && v > 0 && v <= 100000) return v;
+  }
+  return 0;
+};
+
 // Linhas que são cabeçalho/rodapé do cupom — ignoradas como item
-const NOISE_ITEM = /TOTAL|SUBTOTAL|TROCO|DINHEIRO|CARTAO|CREDITO|DEBITO|PIX|CUPOM|CNPJ|CPF|CHAVE|DATA|HORA|COMPROVANTE|VENCIMENTO|NSU|AUTORIZACAO|CANAIS|DESCONTO|ITEM|DESCRICAO|QTD|PRECO|UNID|CANCELADO|ESTABELECIMENTO|ENDERECO|TELEFONE|DOCUMENTO|LOJA|CAIXA|OPERADOR|VOLUME|UNIT|VALOR/i;
+const NOISE_ITEM = /TOTAL|SUBTOTAL|TROCO|DINHEIRO|CARTAO|CREDITO|DEBITO|PIX|CUPOM|CNPJ|CPF|CHAVE|DATA|HORA|COMPROVANTE|VENCIMENTO|NSU|AUTORIZACAO|CANAIS|DESCONTO|ACRESCIMO|ITEM|DESCRICAO|QTD|PRECO|UNID|CANCELADO|ESTABELECIMENTO|ENDERECO|TELEFONE|DOCUMENTO|LOJA|CAIXA|OPERADOR|VOLUME|UNIT|VALOR/i;
 
 // Unidades de medida comuns em cupom fiscal
 const UNITS = ['KG', 'L', 'ML', 'G', 'M2', 'M', 'CX', 'PC', 'PCT', 'DZ', 'GR', 'UN', 'LT', 'KIT'];
@@ -156,71 +82,123 @@ const parseQty = (s: string): number => {
   return parseFloat(s);
 };
 
-// Extrai itens individuais do cupom (linhas terminando em valor no padrão 0,00).
-// Reconhece o formato de cupom fiscal: [qtd UN] NOME DO PRODUTO ... VALOR
-const parseItems = (text: string): OcrItem[] => {
-  const lines = text
-    .split('\n')
-    .map(l => l.trim())
-    .filter(Boolean);
+// Converte número monetário tolerando o OCR que troca vírgula por ponto:
+// "1.118,15" → 1118.15 | "3,50" → 3.5 | "3.50" (OCR) → 3.5
+const parseBrNumber = (s: string): number => {
+  const t = s.trim();
+  if (t.includes(',')) return parseFloat(t.replace(/\./g, '').replace(',', '.'));
+  return parseFloat(t);
+};
+
+// Remove separadores de coluna que o OCR costuma injetar ("—", ":", "|", "·",
+// hífen cercado por espaços). Preserva hífen dentro de nome ("ARROZ-5KG").
+const cleanName = (s: string): string =>
+  s
+    .replace(/[—–-]{2,}/g, ' ')
+    .replace(/\s+[—–:|·.-]\s+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+// Distribui o desconto total do cupom proporcionalmente ao valor bruto de cada
+// item, de forma que a soma dos itens bata com o total geral. O último item
+// absorve as sobras de arredondamento.
+const applyDiscount = (items: OcrItem[], discountTotal: number): OcrItem[] => {
+  if (items.length === 0 || !(discountTotal > 0)) return items;
+  const gross = items.reduce((sum, it) => sum + it.totalPrice, 0);
+  if (!(gross > 0)) return items;
+
+  let assigned = 0;
+  return items.map((item, i) => {
+    let d = round2((item.totalPrice * discountTotal) / gross);
+    if (i === items.length - 1) d = round2(discountTotal - assigned);
+    assigned += d;
+    const totalPrice = Math.max(0, round2(item.totalPrice - d));
+    return {
+      ...item,
+      totalPrice,
+      discount: d > 0 ? d : undefined,
+      discountType: d > 0 ? ('amount' as const) : undefined,
+    };
+  });
+};
+
+// Extrai os itens individuais do cupom de forma robusta ao OCR.
+//
+// O OCR de foto no celular pode fundir as linhas do cupom num texto corrido
+// (sem quebras de linha), então o parse NÃO depende de cada item estar em uma
+// linha própria: ele divide o texto nos valores monetários e reconstrói nome,
+// quantidade e unidade de cada item a partir do trecho que antecede o valor.
+const parseItems = (text: string, discountTotal = 0): OcrItem[] => {
+  const flat = text.replace(/\n+/g, ' ').replace(/\s+/g, ' ');
+  // Valor monetário: exatamente 2 casas decimais, e que não faça parte de uma
+  // quantidade fracionária ("1,500" não casa aqui porque "0" segue após ",50").
+  const valueRe = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})(?![.,]?\d)/g;
+  const parts = flat.split(valueRe);
 
   const items: OcrItem[] = [];
   const seen = new Map<string, number>();
+  let pending = '';
 
-  for (const line of lines) {
-    const m = line.match(/^(.*?)[R$\s]*([\d]+[.,]\d{2})\s*$/);
-    if (!m) continue;
-    const totalPrice = parseFloat(m[2].replace('.', '').replace(',', '.'));
-    if (!(totalPrice > 0) || totalPrice > 50000) continue;
+  for (const part of parts) {
+    const valueMatch = part.match(/^\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*$/);
+    if (valueMatch) {
+      const totalPrice = parseBrNumber(valueMatch[1]);
+      if (totalPrice > 0 && totalPrice <= 50000) {
+        const rawName = cleanName(pending);
+        let qty = 1;
+        let unit: string | undefined;
+        let name: string | undefined;
 
-    let name = m[1].trim();
-    if (!name) continue;
-
-    // Quantidade + unidade no início, padrão cupom fiscal:
-    // "2 UN COCA" | "1,500 KG CARNE" | "0,100 L LEITE" | "3 X PACOTE"
-    let qty = 1;
-    let unit: string | undefined;
-    const uq = name.match(/^([\d]+(?:[.,]\d+)?)\s*([A-Za-z]{1,4}|M²|KG|ML|G|L)?\s+(.+)$/);
-    if (uq) {
-      const parsedQty = parseQty(uq[1]);
-      const rawUnit = (uq[2] || '').toUpperCase();
-      // Só aceita como unidade se for conhecida (evita "1 PNEU ARO 13")
-      const isKnownUnit = rawUnit !== '' && (rawUnit === 'X' || UNITS.some(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)));
-      if (parsedQty > 0 && parsedQty <= 10000 && isKnownUnit) {
-        qty = parsedQty;
-        if (rawUnit !== 'X') {
-          unit = UNITS.find(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)) || rawUnit;
+        // Quantidade + unidade no início do item, padrão cupom fiscal:
+        // "2 UN COCA" | "1,500 KG CARNE" | "0,100 L LEITE" | "3 X PACOTE" | "1,200 M2 FORRO"
+        const uq = rawName.match(/^([\d]+(?:[.,]\d+)?)\s*([A-Za-z]{1,4}|M2|M²|KG|ML|G|L)?\s+(.+)$/);
+        if (uq) {
+          const parsedQty = parseQty(uq[1]);
+          const rawUnit = (uq[2] || '').toUpperCase();
+          // Só aceita como unidade se for conhecida (evita "1 PNEU ARO 13")
+          const isKnownUnit =
+            rawUnit !== '' &&
+            (rawUnit === 'X' || UNITS.some(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)));
+          if (parsedQty > 0 && parsedQty <= 10000 && isKnownUnit) {
+            qty = parsedQty;
+            if (rawUnit !== 'X') {
+              unit = UNITS.find(u => rawUnit.startsWith(u) || u.startsWith(rawUnit)) || rawUnit;
+            }
+            name = cleanName(uq[3]);
+          }
         }
-        name = uq[3].trim();
+
+        // Sem quantidade/unidade: remove número de item ("02 ARROZ" → "ARROZ")
+        if (!name) name = cleanName(rawName).replace(/^\d{1,3}\s+/, '');
+
+        if (name && name.length >= 2 && !NOISE_ITEM.test(name)) {
+          const key = name.toLowerCase();
+          const idx = seen.get(key);
+          if (idx !== undefined) {
+            items[idx].quantity += qty;
+            items[idx].totalPrice += totalPrice;
+            items[idx].unitPrice = items[idx].totalPrice / items[idx].quantity;
+          } else {
+            seen.set(key, items.length);
+            items.push({
+              name,
+              quantity: qty,
+              unit,
+              totalPrice,
+              unitPrice: qty > 0 ? totalPrice / qty : totalPrice,
+            });
+          }
+        }
       }
-    }
-
-    // Limpa artefatos de OCR
-    name = name.replace(/[|.;:_]{2,}/g, ' ').replace(/\s+/g, ' ').trim();
-    name = name.replace(/^\d+\s*/, '');
-
-    if (!name || name.length < 2) continue;
-    if (NOISE_ITEM.test(name)) continue;
-
-    const key = name.toLowerCase();
-    const idx = seen.get(key);
-    if (idx !== undefined) {
-      items[idx].quantity += qty;
-      items[idx].totalPrice += totalPrice;
-      items[idx].unitPrice = items[idx].totalPrice / items[idx].quantity;
+      pending = '';
     } else {
-      seen.set(key, items.length);
-      items.push({
-        name,
-        quantity: qty,
-        unit,
-        totalPrice,
-        unitPrice: qty > 0 ? totalPrice / qty : totalPrice,
-      });
+      pending += ' ' + part;
     }
   }
 
-  return items.slice(0, 50);
+  return applyDiscount(items, discountTotal).slice(0, 50);
 };
 
 const parseDescription = (text: string): string => {
@@ -238,7 +216,25 @@ const parseDescription = (text: string): string => {
   return 'Comprovante';
 };
 
-// Redimensiona e comprime a imagem antes do OCR para acelerar bastante o processamento
+// Aplica escala de cinza + aumento de contraste (cupom térmico) para o OCR
+// reconhecer melhor o texto pequeno impresso.
+const enhanceImage = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const contrast = 1.8;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    let g = (gray - 128) * contrast + 128;
+    g = g < 0 ? 0 : g > 255 ? 255 : g;
+    data[i] = g;
+    data[i + 1] = g;
+    data[i + 2] = g;
+  }
+  ctx.putImageData(imageData, 0, 0);
+};
+
+// Redimensiona, normaliza e comprime a imagem antes do OCR para acelerar e
+// melhorar a leitura no celular
 const resizeImage = (file: File, maxDim = 1600): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -257,6 +253,7 @@ const resizeImage = (file: File, maxDim = 1600): Promise<Blob> => {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
+        enhanceImage(ctx, width, height);
         canvas.toBlob(
           (blob) => {
             URL.revokeObjectURL(url);
@@ -264,7 +261,7 @@ const resizeImage = (file: File, maxDim = 1600): Promise<Blob> => {
             else reject(new Error('Falha ao gerar imagem'));
           },
           'image/jpeg',
-          0.85
+          0.9
         );
       } catch (err) {
         URL.revokeObjectURL(url);
@@ -308,13 +305,17 @@ export function ReceiptScanner({ onScanComplete, onClose, categories }: ReceiptS
       });
 
       try {
+        // PSM 6: bloco de texto uniforme — ideal para cupom fiscal de 80mm
+        await worker.setParameters({ tessedit_pageseg_mode: '6' });
+
         const { data } = await worker.recognize(resized);
         const text = data.text || '';
 
-        const rawItems = parseItems(text);
+        const discountTotal = parseDiscount(text);
+        const rawItems = parseItems(text, discountTotal);
         const items = rawItems.map(item => ({
           ...item,
-          categoryId: classifyCategory(item.name, categories),
+          categoryId: classifyText(item.name, categories),
         }));
 
         onScanComplete({

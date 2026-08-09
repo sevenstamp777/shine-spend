@@ -15,6 +15,7 @@ import {
 import { CategoryIcon, PaymentMethodIcon } from '@/components/icons/CategoryIcon';
 import { TransactionItemsEditor } from './TransactionItemsEditor';
 import { ReceiptScanner, OcrResult } from './ReceiptScanner';
+import { classifyText } from '@/lib/classify';
 import { cn } from '@/lib/utils';
 
 interface TransactionFormProps {
@@ -130,7 +131,7 @@ export function TransactionForm({
       setDescription(result.description);
     }
 
-    // Itens lidos do cupom (com quantidade, unidade e categoria sugerida)
+    // Itens lidos do cupom (com quantidade, unidade, desconto e categoria sugerida)
     if (result.items.length > 0) {
       const newItems: TransactionItem[] = result.items.map((item, index) => ({
         id: `item-${Date.now()}-${index}`,
@@ -138,6 +139,8 @@ export function TransactionForm({
         quantity: item.quantity,
         unit: item.unit,
         unitPrice: item.unitPrice,
+        discount: item.discount,
+        discountType: item.discountType,
         totalPrice: item.totalPrice,
         categoryId: item.categoryId,
       }));
@@ -149,7 +152,8 @@ export function TransactionForm({
       if (sum > 0) setAmount(sum.toFixed(2));
     } else if (result.amount !== null) {
       setAmount(result.amount.toFixed(2));
-      // Sem itens lidos, cria um item espelho para a despesa
+      // Sem itens lidos, cria um item espelho para a despesa — já com
+      // categoria sugerida para não travar o botão Salvar
       if (type === 'expense') {
         const desc = result.description || 'Item';
         const newItem: TransactionItem = {
@@ -158,6 +162,7 @@ export function TransactionForm({
           quantity: 1,
           unitPrice: result.amount,
           totalPrice: result.amount,
+          categoryId: classifyText(desc, categories),
         };
         setItems([newItem]);
       }

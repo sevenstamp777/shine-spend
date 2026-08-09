@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, Tag, Percent } from 'lucide-react';
-import { TransactionItem, Category } from '@/types/finance';
+import { TransactionItem, Category, DiscountType } from '@/types/finance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/lib/formatters';
@@ -68,6 +68,42 @@ function NumberField({ value, onChange, placeholder, className, title, onEnter }
   );
 }
 
+// Conversor do desconto em R$ a partir do valor informado (R$ ou % do subtotal)
+const discountToAmount = (qty: number, unitPrice: number, discount: number, type?: DiscountType) => {
+  const subtotal = qty * unitPrice;
+  if (type === 'percent') return (subtotal * discount) / 100;
+  return discount;
+};
+
+const calculateItemTotal = (qty: number, price: number, discount: number, type?: DiscountType) => {
+  const subtotal = qty * price;
+  const discountValue = discountToAmount(qty, price, discount, type);
+  return Math.max(0, subtotal - discountValue);
+};
+
+// Seletor compacto de tipo de desconto (R$ ou %)
+function DiscountTypeSelect({
+  value,
+  onChange,
+  className,
+}: {
+  value: DiscountType;
+  onChange: (type: DiscountType) => void;
+  className?: string;
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as DiscountType)}>
+      <SelectTrigger className={`h-8 w-14 px-2 text-xs ${className ?? ''}`} title="Tipo de desconto: R$ ou %">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="bg-popover">
+        <SelectItem value="amount">R$</SelectItem>
+        <SelectItem value="percent">%</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
 interface TransactionItemsEditorProps {
   items: TransactionItem[];
   onChange: (items: TransactionItem[]) => void;
@@ -90,18 +126,19 @@ export function TransactionItemsEditor({
   const [newItemUnit, setNewItemUnit] = useState('');
   const [newItemPrice, setNewItemPrice] = useState('');
   const [newItemDiscount, setNewItemDiscount] = useState('');
+  const [newItemDiscountType, setNewItemDiscountType] = useState<DiscountType>('amount');
   const [newItemCategoryId, setNewItemCategoryId] = useState('');
 
   // Filter only expense categories for items
   const expenseCategories = categories.filter(c => c.type === 'expense');
 
-  const calculateItemTotal = (qty: number, price: number, discount: number) => {
-    const subtotal = qty * price;
-    return Math.max(0, subtotal - discount);
-  };
-
   const itemsTotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
-  const totalDiscount = items.reduce((sum, item) => sum + (item.discount || 0), 0);
+  const totalDiscount = items.reduce(
+    (sum, item) =>
+      sum +
+      discountToAmount(item.quantity, item.unitPrice, item.discount || 0, item.discountType),
+    0
+  );
   const difference = totalAmount - itemsTotal;
 
   // Check if all items have categories
@@ -121,7 +158,8 @@ export function TransactionItemsEditor({
       unit: newItemUnit.trim() || undefined,
       unitPrice: price,
       discount: discount > 0 ? discount : undefined,
-      totalPrice: calculateItemTotal(qty, price, discount),
+      discountType: newItemDiscountType,
+      totalPrice: calculateItemTotal(qty, price, discount, newItemDiscountType),
       categoryId: newItemCategoryId,
     };
 
@@ -131,6 +169,7 @@ export function TransactionItemsEditor({
     setNewItemUnit('');
     setNewItemPrice('');
     setNewItemDiscount('');
+    setNewItemDiscountType('amount');
     setNewItemCategoryId('');
 
     // Auto-update total if needed
@@ -153,15 +192,18 @@ export function TransactionItemsEditor({
         updated.name = value;
       } else if (field === 'quantity') {
         updated.quantity = parseFloat(value) || 0;
-        updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0);
+        updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0, updated.discountType);
       } else if (field === 'unit') {
         updated.unit = value || undefined;
       } else if (field === 'unitPrice') {
         updated.unitPrice = parseFloat(value) || 0;
-        updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0);
+        updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0, updated.discountType);
       } else if (field === 'discount') {
         updated.discount = parseFloat(value) || 0;
-        updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0);
+        updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0, updated.discountType);
+      } else if (field === 'discountType') {
+        updated.discountType = value === 'percent' ? 'percent' : 'amount';
+        updated.totalPrice = calculateItemTotal(updated.quantity, updated.unitPrice, updated.discount || 0, updated.discountType);
       } else if (field === 'categoryId') {
         updated.categoryId = value || undefined;
       }
@@ -211,6 +253,7 @@ export function TransactionItemsEditor({
             {items.map((item, index) => {
               const itemCategory = getCategoryById(item.categoryId);
               const missingCategory = required && !item.categoryId;
+              const discountType = item.discountType || 'amount';
               return (
                 <div
                   key={item.id}
@@ -270,7 +313,7 @@ export function TransactionItemsEditor({
                     </Select>
                   </div>
 
-                  {/* Row 3: Qty, Unit, Price, Discount, Total */}
+                  {/* Row 3: Qty, Unit, Price, Total */}
                   <div className="flex items-center gap-2 pl-7">
                     <NumberField
                       value={item.quantity}
@@ -298,18 +341,33 @@ export function TransactionItemsEditor({
                         title="Preço unitário"
                       />
                     </div>
-                    <div className="relative w-20">
-                      <Percent size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <div className="flex-1" />
+                    <span className="text-sm font-medium w-20 text-right">
+                      {formatCurrency(item.totalPrice)}
+                    </span>
+                  </div>
+
+                  {/* Row 4: Discount (R$ or %) */}
+                  <div className="flex items-center gap-2 pl-7">
+                    <Percent size={14} className="shrink-0 text-muted-foreground" />
+                    <div className="relative flex-1 max-w-[180px]">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                        {discountType === 'percent' ? '%' : 'R$'}
+                      </span>
                       <NumberField
                         value={item.discount || 0}
                         onChange={(v) => handleUpdateItem(item.id, 'discount', String(v))}
-                        className="h-8 text-sm pl-7 text-green-600"
-                        placeholder="Desc."
-                        title="Desconto em R$"
+                        className="h-8 text-sm pl-8 text-green-600"
+                        placeholder="0"
+                        title="Desconto"
                       />
                     </div>
-                    <span className="text-sm font-medium w-20 text-right">
-                      {formatCurrency(item.totalPrice)}
+                    <DiscountTypeSelect
+                      value={discountType}
+                      onChange={(t) => handleUpdateItem(item.id, 'discountType', t)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {discountType === 'percent' ? 'do subtotal' : 'no item'}
                     </span>
                   </div>
                 </div>
@@ -405,7 +463,7 @@ export function TransactionItemsEditor({
             </Select>
           </div>
 
-          {/* Qty, Unit, Price, Discount */}
+          {/* Qty, Unit, Price */}
           <div className="flex gap-2">
             <NumberField
               value={parseFloat(newItemQty) || 0}
@@ -436,16 +494,6 @@ export function TransactionItemsEditor({
                 onEnter={handleAddItem}
               />
             </div>
-            <div className="relative w-24">
-              <Percent size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <NumberField
-                value={parseFloat(newItemDiscount) || 0}
-                onChange={(v) => setNewItemDiscount(v ? String(v) : '')}
-                placeholder="Desc."
-                className="h-9 pl-7"
-                title="Desconto em R$"
-              />
-            </div>
             <Button
               type="button"
               variant="secondary"
@@ -456,6 +504,31 @@ export function TransactionItemsEditor({
             >
               <Plus size={16} />
             </Button>
+          </div>
+
+          {/* Discount (R$ or %) */}
+          <div className="flex items-center gap-2">
+            <Percent size={14} className="shrink-0 text-muted-foreground" />
+            <div className="relative flex-1 max-w-[180px]">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                {newItemDiscountType === 'percent' ? '%' : 'R$'}
+              </span>
+              <NumberField
+                value={parseFloat(newItemDiscount) || 0}
+                onChange={(v) => setNewItemDiscount(v ? String(v) : '')}
+                placeholder="0"
+                className="h-9 pl-8"
+                title="Desconto"
+                onEnter={handleAddItem}
+              />
+            </div>
+            <DiscountTypeSelect
+              value={newItemDiscountType}
+              onChange={setNewItemDiscountType}
+            />
+            <span className="text-xs text-muted-foreground">
+              {newItemDiscountType === 'percent' ? 'do subtotal' : 'no item'}
+            </span>
           </div>
           
           {newItemName && newItemPrice && !newItemCategoryId && (
