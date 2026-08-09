@@ -18,6 +18,15 @@ import {
 import migrated from '@/data/migrated.json';
 import { useFileSystemStorage } from './useFileSystemStorage';
 import type { FileSystemStorageData } from './useFileSystemStorage';
+import {
+  getSyncToken,
+  setSyncToken,
+  fetchSnapshot,
+  pushSnapshot,
+  mergeSnapshots,
+} from '@/lib/syncClient';
+
+export type SyncStatus = 'off' | 'syncing' | 'synced' | 'offline';
 
 export function useFinanceData() {
   const fileSystem = useFileSystemStorage();
@@ -28,7 +37,10 @@ export function useFinanceData() {
   const [transactions, setTransactions] = useState<Transaction[]>(sampleTransactions);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [isInitialized, setIsInitialized] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('off');
+  const [syncToken, setSyncTokenState] = useState(getSyncToken());
   const isFirstLoad = useRef(true);
+  const syncInFlight = useRef(false);
 
   // Load data when file system is ready
   useEffect(() => {
@@ -55,6 +67,54 @@ export function useFinanceData() {
       fileSystem.saveData({ categories, paymentMethods, products, budgets, transactions });
     }
   }, [categories, paymentMethods, products, budgets, transactions, fileSystem.isReady, isInitialized, fileSystem.saveData]);
+
+  // ——— Sincronização ———
+
+  // Sincroniza (push + pull) com o servidor
+  const syncNow = useCallback(async () => {
+    const token = getSyncToken();
+    if (!token || !isInitialized || syncInFlight.current) return;
+    syncInFlight.current = true;
+    setSyncStatus('syncing');
+    try {
+      const snapshot = await fetchSnapshot(token);
+      if (snapshot.data) {
+        const merged = mergeSnapshots(
+          { categories, paymentMethods, products, budgets, transactions },
+          snapshot.data
+        );
+        setCategories(merged.categories);
+        setPaymentMethods(merged.paymentMethods);
+        setProducts(merged.products);
+        setBudgets(merged.budgets);
+        setTransactions(merged.transactions);
+        await pushSnapshot(token, merged);
+      } else {
+        // Primeira vez: envia os dados locais
+        await pushSnapshot(token, { categories, paymentMethods, products, budgets, transactions });
+      }
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error('Sync error:', err);
+      setSyncStatus('offline');
+    } finally {
+      syncInFlight.current = false;
+    }
+  }, [categories, paymentMethods, products, budgets, transactions, isInitialized]);
+
+  // Ao inicializar, puxa os dados do servidor (o celular já sincroniza os lançamentos)
+  useEffect(() => {
+    if (isInitialized && syncToken) {
+      syncNow();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInitialized]);
+
+  const configureSync = useCallback((token: string) => {
+    setSyncToken(token);
+    setSyncTokenState(token);
+    if (token) syncNow();
+  }, [syncNow]);
 
   // Handle file selection and load data
   const connectToFile = useCallback(async () => {
@@ -284,6 +344,14 @@ export function useFinanceData() {
       usingFallback: fileSystem.usingFallback,
       connect: connectToFile,
       useLocalStorage: fileSystem.useLocalStorage,
+    },
+
+    // Sync Status
+    sync: {
+      status: syncStatus,
+      token: syncToken,
+      configure: configureSync,
+      syncNow,
     },
     
     // Data

@@ -12,7 +12,7 @@ import { ProductsView } from './ProductsView';
 import { BudgetsView } from './BudgetsView';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
-import { Database, FileText, FolderOpen } from 'lucide-react';
+import { Database, FileText, FolderOpen, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 
 type TabId = 'dashboard' | 'transactions' | 'categories' | 'payments' | 'products' | 'budgets';
 
@@ -20,9 +20,11 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [syncTokenInput, setSyncTokenInput] = useState('');
 
   const {
     fileSystem,
+    sync,
     categories,
     paymentMethods,
     products,
@@ -183,6 +185,18 @@ const Index = () => {
     reader.readAsText(file);
   };
 
+  const handleSaveSyncToken = () => {
+    sync.configure(syncTokenInput.trim());
+    toast.success(syncTokenInput.trim() ? 'Sincronização configurada!' : 'Sincronização desativada');
+  };
+
+  const syncLabel = {
+    off: 'Sincronização desativada',
+    syncing: 'Sincronizando...',
+    synced: 'Sincronizado',
+    offline: 'Offline',
+  }[sync.status];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Storage indicator */}
@@ -238,6 +252,43 @@ const Index = () => {
               Usar armazenamento local
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Sync indicator */}
+      <div className="bg-muted/20 border-b border-border px-4 py-2 flex items-center justify-between gap-2 flex-wrap">
+        <button
+          onClick={() => sync.syncNow()}
+          className="flex items-center gap-2 text-xs"
+          title="Sincronizar agora"
+          disabled={!sync.token || sync.status === 'syncing'}
+        >
+          {sync.status === 'synced' ? (
+            <Cloud className="w-4 h-4 text-success" />
+          ) : sync.status === 'syncing' ? (
+            <RefreshCw className="w-4 h-4 text-primary animate-spin" />
+          ) : (
+            <CloudOff className="w-4 h-4 text-muted-foreground" />
+          )}
+          <span className={sync.status === 'synced' ? 'text-success' : 'text-muted-foreground'}>
+            {syncLabel}
+          </span>
+        </button>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={syncTokenInput || sync.token}
+            onChange={(e) => setSyncTokenInput(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            placeholder="Token de sincronização"
+            className="w-40 h-7 px-2 text-xs bg-background border border-border rounded-md"
+          />
+          <button
+            onClick={handleSaveSyncToken}
+            className="text-xs text-primary hover:text-primary/80 transition-colors"
+          >
+            Salvar
+          </button>
         </div>
       </div>
 
