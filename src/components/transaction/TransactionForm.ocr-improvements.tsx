@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { CategoryIcon, PaymentMethodIcon } from '@/components/icons/CategoryIcon';
 import { TransactionItemsEditor } from './TransactionItemsEditor';
+import { ReceiptScanner, OcrResult } from './ReceiptScanner';
 import { classifyText } from '@/lib/classify';
 import { cn } from '@/lib/utils';
 
@@ -46,7 +47,10 @@ export function TransactionForm({
   );
   const [notes, setNotes] = useState(transaction?.notes || '');
   const [items, setItems] = useState<TransactionItem[]>(transaction?.items || []);
-  // Scanner state removed for functional app version
+  const [isScanning, setIsScanning] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredCategories = categories.filter(c => c.type === type);
 
@@ -94,9 +98,9 @@ export function TransactionForm({
       return;
     }
     
-    // For functional app: hide payment method and scanner for income tab
-    // For expenses tab: hide scanner button
-    if (!description || !amount || (isExpense && !paymentMethodId)) {
+    // For OCR improvements version: keep payment method for both tabs (but can be hidden via CSS if needed)
+    // Scanner button visibility can be controlled via CSS or state if needed
+    if (!description || !amount || !paymentMethodId) {
       return;
     }
 
@@ -131,7 +135,52 @@ export function TransactionForm({
     setAmount(total.toFixed(2));
   };
 
-  // OCR result handler removed for functional app version
+  const handleOcrResult = (result: OcrResult) => {
+    if (result.description && result.description !== 'Comprovante') {
+      setDescription(result.description);
+    }
+
+    // Itens lidos do cupom (com quantidade, unidade, desconto e categoria sugerida)
+    if (result.items.length > 0) {
+      const newItems: TransactionItem[] = result.items.map((item, index) => ({
+        id: `item-${Date.now()}-${index}`,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        discount: item.discount,
+        discountType: item.discountType,
+        totalPrice: item.totalPrice,
+        categoryId: item.categoryId,
+      }));
+      setItems(newItems);
+
+      // Soma dos itens como valor (mais preciso que o total lido, que pode
+      // incluir troco/arredondamentos)
+      const sum = newItems.reduce((acc, it) => acc + it.totalPrice, 0);
+      if (sum > 0) setAmount(sum.toFixed(2));
+    } else if (result.amount !== null) {
+      setAmount(result.amount.toFixed(2));
+      // Sem itens lidos, cria um item espelho para a despesa — já com
+      // categoria sugerida para não travar o botão Salvar
+      if (type === 'expense') {
+        const desc = result.description || 'Item';
+        const newItem: TransactionItem = {
+          id: `item-${Date.now()}`,
+          name: desc,
+          quantity: 1,
+          unitPrice: result.amount,
+          totalPrice: result.amount,
+          categoryId: classifyText(desc, categories),
+        };
+        setItems([newItem]);
+      }
+    }
+
+    if (result.date) {
+      setDate(result.date);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -252,27 +301,25 @@ export function TransactionForm({
               </div>
             )}
 
-            {/* Payment Method - ONLY for expenses (hidden for income tab as requested) */}
-            {isExpense && (
-              <div className="space-y-2">
-                <Label className="text-muted-foreground">Meio de Pagamento</Label>
-                <Select value={paymentMethodId} onValueChange={setPaymentMethodId} required>
-                  <SelectTrigger className="h-12 bg-background">
-                    <SelectValue placeholder="Selecione o meio de pagamento" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {paymentMethods.map((method) => (
-                      <SelectItem key={method.id} value={method.id}>
-                        <div className="flex items-center gap-3">
-                          <PaymentMethodIcon type={method.type} size={18} />
-                          <span>{method.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            {/* Payment Method - kept for both tabs in OCR improvements version */}
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">Meio de Pagamento</Label>
+              <Select value={paymentMethodId} onValueChange={setPaymentMethodId} required>
+                <SelectTrigger className="h-12 bg-background">
+                  <SelectValue placeholder="Selecione o meio de pagamento" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  {paymentMethods.map((method) => (
+                    <SelectItem key={method.id} value={method.id}>
+                      <div className="flex items-center gap-3">
+                        <PaymentMethodIcon type={method.type} size={18} />
+                        <span>{method.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* Date */}
             <div className="space-y-2">
@@ -324,6 +371,15 @@ export function TransactionForm({
               </Button>
             </div>
           </form>
+          
+          {/* Scanner - available for both tabs in OCR improvements version */}
+          {isScanning && (
+            <ReceiptScanner
+              onScanComplete={handleOcrResult}
+              onClose={() => setIsScanning(false)}
+              categories={categories}
+            />
+          )}
         </div>
       </div>
     </div>
