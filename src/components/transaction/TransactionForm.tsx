@@ -224,7 +224,7 @@ export function TransactionForm({
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ex: Compras no supermercado"
+                placeholder="Ex: Aluguel"
                 className="h-12"
                 required
               />
