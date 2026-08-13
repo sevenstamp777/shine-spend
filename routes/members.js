@@ -1,46 +1,57 @@
 const express = require('express');
-const db = require('../database');
+const { all, get, run } = require('../database');
 const { isAuthenticated } = require('../middleware/auth');
 const router = express.Router();
 
 router.use(isAuthenticated);
 
-router.get('/', (req, res) => {
-  const userId = req.session.user.id;
-  const members = db.prepare('SELECT * FROM members WHERE user_id = ?').all(userId);
-  res.json(members);
+router.get('/', async (req, res, next) => {
+  try {
+    const userId = req.session.user.id;
+    const members = await all('SELECT * FROM members WHERE user_id = $1', [userId]);
+    res.json(members);
+  } catch (e) { next(e); }
 });
 
-router.post('/', (req, res) => {
-  const userId = req.session.user.id;
-  const { name, relation } = req.body;
-  if (!name || !relation) {
-    return res.status(400).json({ error: 'Nome e relação são obrigatórios.' });
-  }
-  const result = db.prepare('INSERT INTO members (user_id, name, relation) VALUES (?, ?, ?)').run(userId, name, relation);
-  const member = db.prepare('SELECT * FROM members WHERE id = ?').get(result.lastInsertRowid);
-  res.status(201).json(member);
+router.post('/', async (req, res, next) => {
+  try {
+    const userId = req.session.user.id;
+    const { name, relation } = req.body;
+    if (!name || !relation) {
+      return res.status(400).json({ error: 'Nome e relação são obrigatórios.' });
+    }
+    const result = await run(
+      'INSERT INTO members (user_id, name, relation) VALUES ($1, $2, $3) RETURNING id',
+      [userId, name, relation]
+    );
+    const member = await get('SELECT * FROM members WHERE id = $1', [result.rows[0].id]);
+    res.status(201).json(member);
+  } catch (e) { next(e); }
 });
 
-router.put('/:id', (req, res) => {
-  const userId = req.session.user.id;
-  const { id } = req.params;
-  const { name, relation } = req.body;
+router.put('/:id', async (req, res, next) => {
+  try {
+    const userId = req.session.user.id;
+    const { id } = req.params;
+    const { name, relation } = req.body;
 
-  const existing = db.prepare('SELECT * FROM members WHERE id = ? AND user_id = ?').get(id, userId);
-  if (!existing) return res.status(404).json({ error: 'Membro não encontrado.' });
+    const existing = await get('SELECT * FROM members WHERE id = $1 AND user_id = $2', [id, userId]);
+    if (!existing) return res.status(404).json({ error: 'Membro não encontrado.' });
 
-  db.prepare('UPDATE members SET name=?, relation=? WHERE id=? AND user_id=?').run(name, relation, id, userId);
-  const updated = db.prepare('SELECT * FROM members WHERE id = ?').get(id);
-  res.json(updated);
+    await run('UPDATE members SET name=$1, relation=$2 WHERE id=$3 AND user_id=$4', [name, relation, id, userId]);
+    const updated = await get('SELECT * FROM members WHERE id = $1', [id]);
+    res.json(updated);
+  } catch (e) { next(e); }
 });
 
-router.delete('/:id', (req, res) => {
-  const userId = req.session.user.id;
-  const { id } = req.params;
-  const result = db.prepare('DELETE FROM members WHERE id = ? AND user_id = ?').run(id, userId);
-  if (result.changes === 0) return res.status(404).json({ error: 'Membro não encontrado.' });
-  res.json({ ok: true });
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const userId = req.session.user.id;
+    const { id } = req.params;
+    const result = await run('DELETE FROM members WHERE id = $1 AND user_id = $2', [id, userId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Membro não encontrado.' });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

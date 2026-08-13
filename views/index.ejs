@@ -232,23 +232,45 @@
             </div>
 
             <div class="page" id="page-transactions">
-                <div class="transactions-toolbar">
+                <div class="search-section">
                     <div class="search-box">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                             <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2" />
                             <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                         </svg>
-                        <input type="text" id="searchInput" placeholder="Pesquisar transações..." />
+                        <input type="text" id="searchInput" placeholder="Buscar por item, descrição ou categoria..." />
                     </div>
-                    <div class="filter-group">
-                        <select id="filterType" class="filter-select">
-                            <option value="">Todos os tipos</option>
-                            <option value="income">Receitas</option>
-                            <option value="expense">Despesas</option>
-                        </select>
-                        <select id="filterCategory" class="filter-select">
-                            <option value="">Todas as categorias</option>
-                        </select>
+                    <div class="filter-grid">
+                        <div class="filter-field">
+                            <label for="filterPlace">Local de compra</label>
+                            <input type="text" id="filterPlace" placeholder="Ex: Mercado, Shopee..." />
+                        </div>
+                        <div class="filter-field">
+                            <label for="filterDateFrom">De</label>
+                            <input type="date" id="filterDateFrom" />
+                        </div>
+                        <div class="filter-field">
+                            <label for="filterDateTo">Até</label>
+                            <input type="date" id="filterDateTo" />
+                        </div>
+                        <div class="filter-field">
+                            <label for="filterType">Tipo</label>
+                            <select id="filterType" class="filter-select">
+                                <option value="">Todos os tipos</option>
+                                <option value="income">Receitas</option>
+                                <option value="expense">Despesas</option>
+                            </select>
+                        </div>
+                        <div class="filter-field">
+                            <label for="filterCategory">Categoria</label>
+                            <select id="filterCategory" class="filter-select">
+                                <option value="">Todas as categorias</option>
+                            </select>
+                        </div>
+                        <div class="filter-field filter-actions">
+                            <button type="button" class="btn-secondary small" id="clearFiltersBtn">Limpar filtros</button>
+                            <span id="filterCount" class="filter-count"></span>
+                        </div>
                     </div>
                 </div>
 
@@ -405,13 +427,13 @@
             <form id="transactionForm">
                 <input type="hidden" id="editId" value="" />
                 <div class="form-group">
-                    <label for="txDescription">Descrição</label>
-                    <input type="text" id="txDescription" placeholder="Ex: Salário, Aluguel, Mercado..." required />
+                    <label for="txDescription">Descrição do Lançamento</label>
+                    <input type="text" id="txDescription" placeholder="Ex: Compra no mercado, Salário, Aluguel..." required />
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="txAmount">Valor (R$)</label>
-                        <input type="number" id="txAmount" placeholder="0,00" step="0.01" min="0.01" required />
+                        <label for="txPlace">Local de Compra</label>
+                        <input type="text" id="txPlace" placeholder="Ex: Supermercado Extra, Shopee, Drogaria..." />
                     </div>
                     <div class="form-group">
                         <label for="txDate">Data</label>
@@ -419,18 +441,25 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="txCategory">Categoria</label>
-                    <select id="txCategory" required>
-                        <option value="">Selecione...</option>
-                    </select>
-                </div>
-                <div class="form-group">
                     <label for="txNote">Observação (opcional)</label>
                     <input type="text" id="txNote" placeholder="Adicionar nota..." />
                 </div>
+
+                <div class="items-editor">
+                    <div class="items-editor-header">
+                        <span>Itens do Lançamento (cupom fiscal)</span>
+                        <button type="button" class="btn-secondary small" id="addItemBtn">+ Adicionar Item</button>
+                    </div>
+                    <div class="items-editor-list" id="itemsList"></div>
+                    <div class="items-editor-total">
+                        <span>Total</span>
+                        <span id="itemsTotal">R$ 0,00</span>
+                    </div>
+                </div>
+
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="cancelTransaction">Cancelar</button>
-                    <button type="submit" class="btn-primary" id="saveTransaction">Salvar Transação</button>
+                    <button type="submit" class="btn-primary" id="saveTransaction">Salvar Lançamento</button>
                 </div>
             </form>
         </div>

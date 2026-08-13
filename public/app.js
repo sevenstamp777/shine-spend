@@ -523,14 +523,36 @@ function renderRecentTransactions() {
 }
 
 function renderAllTransactions() {
-  const search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+  const placeF = (document.getElementById('filterPlace')?.value || '').toLowerCase().trim();
+  const dateFrom = document.getElementById('filterDateFrom')?.value || '';
+  const dateTo = document.getElementById('filterDateTo')?.value || '';
   const typeF = document.getElementById('filterType')?.value || '';
   const catF = document.getElementById('filterCategory')?.value || '';
 
   let txs = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
-  if (search) txs = txs.filter(t => t.description.toLowerCase().includes(search) || getCategoryById(t.category).label.toLowerCase().includes(search));
+
+  if (search) {
+    txs = txs.filter(t => {
+      const haystack = [
+        t.description.toLowerCase(),
+        getCategoryById(t.category).label.toLowerCase(),
+        ...(t.items || []).map(i => i.description.toLowerCase()),
+        ...(t.items || []).map(i => getCategoryById(i.category).label.toLowerCase()),
+      ].join(' ');
+      return haystack.includes(search);
+    });
+  }
+  if (placeF) txs = txs.filter(t => (t.place || '').toLowerCase().includes(placeF));
+  if (dateFrom) txs = txs.filter(t => t.date >= dateFrom);
+  if (dateTo) txs = txs.filter(t => t.date <= dateTo);
   if (typeF) txs = txs.filter(t => t.type === typeF);
-  if (catF) txs = txs.filter(t => t.category === catF);
+  if (catF) {
+    txs = txs.filter(t => t.category === catF || (t.items || []).some(i => i.category === catF));
+  }
+
+  const countEl = document.getElementById('filterCount');
+  if (countEl) countEl.textContent = `${txs.length} resultado${txs.length !== 1 ? 's' : ''}`;
 
   const container = document.getElementById('allTransactions');
   container.innerHTML = txs.length === 0 ? emptyState('📋', 'Nenhuma transação encontrada.') : txs.map(txHTML).join('');
@@ -541,12 +563,28 @@ function txHTML(t) {
   const cat = getCategoryById(t.category);
   const sign = t.type === 'income' ? '+' : '-';
   const color = t.type === 'income' ? 'var(--income)' : 'var(--expense)';
+  const items = (t.items && t.items.length) ? t.items : [];
+  const itemMeta = items.length > 1 ? ` · ${items.length} itens` : '';
+  const place = t.place ? `<div class="tx-place">📍 ${escHtml(t.place)}</div>` : '';
+  const itemsHTML = items.length > 1 ? `
+    <div class="tx-items-toggle">
+      <button type="button" class="tx-items-btn" data-id="${t.id}">Ver itens (${items.length}) ▾</button>
+      <div class="tx-items-list" id="txItems-${t.id}" style="display:none;">
+        ${items.map(i => {
+          const icat = getCategoryById(i.category);
+          return `<div class="tx-item-line"><span>${escHtml(i.description)} <em>${icat.label}</em></span><span>${fmtCurrency(i.amount)}</span></div>`;
+        }).join('')}
+        <div class="tx-item-line tx-item-total"><span>Total</span><span>${fmtCurrency(t.amount)}</span></div>
+      </div>
+    </div>` : '';
   return `
     <div class="tx-item" data-id="${t.id}">
       <div class="tx-icon" style="background:${cat.color}22; color:${cat.color};">${cat.icon}</div>
       <div class="tx-info">
         <div class="tx-desc">${escHtml(t.description)}</div>
-        <div class="tx-meta">${cat.label}${t.note ? ' · ' + escHtml(t.note) : ''}</div>
+        <div class="tx-meta">${cat.label}${itemMeta}${t.note ? ' · ' + escHtml(t.note) : ''}</div>
+        ${place}
+        ${itemsHTML}
       </div>
       <div class="tx-amount-col">
         <div class="tx-amount" style="color:${color}">${sign} ${fmtCurrency(t.amount)}</div>
@@ -566,6 +604,15 @@ function attachTxActions(container) {
   container.querySelectorAll('.delete-tx').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); deleteTransaction(btn.dataset.id); });
   });
+  container.querySelectorAll('.tx-items-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const list = document.getElementById('txItems-' + btn.dataset.id);
+      if (!list) return;
+      const hidden = list.style.display === 'none';
+      list.style.display = hidden ? 'block' : 'none';
+      btn.textContent = hidden ? `Ocultar itens (${list.querySelectorAll('.tx-item-line').length - 1}) ▴` : `Ver itens (${list.querySelectorAll('.tx-item-line').length - 1}) ▾`;
+    });
+  });
 }
 
 function emptyState(icon, msg, withBtn = false) {
@@ -578,6 +625,10 @@ function emptyState(icon, msg, withBtn = false) {
 
 function escHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escAttr(str) {
+  return escHtml(str).replace(/'/g, '&#39;');
 }
 
 /* TRANSACTION MODAL */
@@ -594,31 +645,91 @@ function initTransactionModal() {
   document.getElementById('typeIncome').addEventListener('click', () => setTransactionType('income'));
   document.getElementById('typeExpense').addEventListener('click', () => setTransactionType('expense'));
 
+  document.getElementById('addItemBtn').addEventListener('click', () => addItemRow());
+
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     saveTransactionFromForm();
   });
 
-  populateCategorySelect('txCategory', 'income');
   document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
+}
+
+function itemRowHTML(item = {}) {
+  const description = item.description || '';
+  const category = item.category || '';
+  const amount = item.amount != null ? item.amount : '';
+  return `
+    <div class="item-row">
+      <div class="item-field item-field-desc">
+        <input type="text" class="item-description" placeholder="Ex: Arroz 5kg" value="${escAttr(description)}" />
+      </div>
+      <div class="item-field">
+        <select class="item-category">
+          <option value="">Categoria</option>
+          ${CATEGORIES[currentType].map(c => `<option value="${c.id}" ${c.id === category ? 'selected' : ''}>${c.icon} ${c.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="item-field item-field-amount">
+        <input type="number" class="item-amount" placeholder="0,00" step="0.01" min="0.01" value="${amount}" />
+      </div>
+      <button type="button" class="item-remove" title="Remover item">✕</button>
+    </div>`;
+}
+
+function addItemRow(item = {}) {
+  const list = document.getElementById('itemsList');
+  const row = document.createElement('div');
+  row.innerHTML = itemRowHTML(item);
+  const node = row.firstElementChild;
+  node.querySelector('.item-remove').addEventListener('click', () => {
+    node.remove();
+    updateItemsTotal();
+  });
+  node.querySelector('.item-category').addEventListener('change', updateItemsTotal);
+  node.querySelectorAll('input').forEach(inp => inp.addEventListener('input', updateItemsTotal));
+  list.appendChild(node);
+  updateItemsTotal();
+}
+
+function collectItems() {
+  const rows = document.querySelectorAll('#itemsList .item-row');
+  const items = [];
+  rows.forEach(row => {
+    const description = row.querySelector('.item-description').value.trim();
+    const category = row.querySelector('.item-category').value;
+    const amount = parseFloat(row.querySelector('.item-amount').value);
+    if (description && category && !isNaN(amount) && amount > 0) {
+      items.push({ description, category, amount });
+    }
+  });
+  return items;
+}
+
+function updateItemsTotal() {
+  const items = collectItems();
+  const total = items.reduce((s, i) => s + i.amount, 0);
+  const totalEl = document.getElementById('itemsTotal');
+  if (totalEl) totalEl.textContent = fmtCurrency(total);
 }
 
 function openTransactionModal(tx = null) {
   editingId = tx ? tx.id : null;
-  document.getElementById('modalTitle').textContent = tx ? 'Editar Transação' : 'Nova Transação';
+  document.getElementById('modalTitle').textContent = tx ? 'Editar Lançamento' : 'Novo Lançamento';
   document.getElementById('editId').value = tx ? tx.id : '';
 
   const type = tx ? tx.type : 'income';
   setTransactionType(type);
 
   document.getElementById('txDescription').value = tx ? tx.description : '';
-  document.getElementById('txAmount').value = tx ? tx.amount : '';
+  document.getElementById('txPlace').value = tx ? (tx.place || '') : '';
   document.getElementById('txDate').value = tx ? tx.date : new Date().toISOString().split('T')[0];
   document.getElementById('txNote').value = tx ? (tx.note || '') : '';
 
-  if (tx) {
-    document.getElementById('txCategory').value = tx.category;
-  }
+  const itemsList = document.getElementById('itemsList');
+  itemsList.innerHTML = '';
+  const items = (tx && tx.items && tx.items.length) ? tx.items : [{}];
+  items.forEach(item => addItemRow(item));
 
   document.getElementById('transactionModal').classList.add('open');
   document.getElementById('txDescription').focus();
@@ -627,6 +738,7 @@ function openTransactionModal(tx = null) {
 function closeTransactionModal() {
   document.getElementById('transactionModal').classList.remove('open');
   document.getElementById('transactionForm').reset();
+  document.getElementById('itemsList').innerHTML = '';
   editingId = null;
 }
 
@@ -636,7 +748,11 @@ function setTransactionType(type) {
   document.getElementById('typeIncome').classList.toggle('income-btn', type === 'income');
   document.getElementById('typeExpense').classList.toggle('active', type === 'expense');
   document.getElementById('typeExpense').classList.toggle('expense-btn', type === 'expense');
-  populateCategorySelect('txCategory', type);
+  document.querySelectorAll('#itemsList .item-category').forEach(sel => {
+    const prevVal = sel.value;
+    sel.innerHTML = `<option value="">Categoria</option>` + CATEGORIES[type].map(c => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+    if (prevVal && CATEGORIES[type].some(c => c.id === prevVal)) sel.value = prevVal;
+  });
 }
 
 function populateCategorySelect(selectId, type) {
@@ -656,28 +772,31 @@ async function saveTransactionFromForm() {
   const txData = {
     type: currentType,
     description: document.getElementById('txDescription').value.trim(),
-    amount: parseFloat(document.getElementById('txAmount').value),
+    place: document.getElementById('txPlace').value.trim(),
     date: document.getElementById('txDate').value,
-    category: document.getElementById('txCategory').value,
     note: document.getElementById('txNote').value.trim(),
+    items: collectItems(),
   };
-  if (!txData.description || !txData.amount || !txData.date || !txData.category) return;
+  if (!txData.description || !txData.date || txData.items.length === 0) {
+    showToast('Preencha a descrição, data e ao menos um item válido.', 'error');
+    return;
+  }
 
   try {
     if (editingId) {
-      await API.updateTransaction(editingId, txData);
+      const updated = await API.updateTransaction(editingId, txData);
       const idx = transactions.findIndex(t => t.id == editingId);
-      if (idx !== -1) transactions[idx] = { ...transactions[idx], ...txData };
-      showToast('Transação atualizada!', 'success');
+      if (idx !== -1) transactions[idx] = updated;
+      showToast('Lançamento atualizado!', 'success');
     } else {
       const newTx = await API.createTransaction(txData);
       transactions.unshift(newTx);
-      showToast('Transação adicionada!', 'success');
+      showToast('Lançamento adicionado!', 'success');
     }
     closeTransactionModal();
     renderAll();
   } catch (e) {
-    showToast('Erro ao salvar transação.', 'error');
+    showToast('Erro ao salvar lançamento.', 'error');
   }
 }
 
@@ -715,8 +834,22 @@ function initFilters() {
   });
 
   document.getElementById('searchInput').addEventListener('input', renderAllTransactions);
+  document.getElementById('filterPlace').addEventListener('input', renderAllTransactions);
+  document.getElementById('filterDateFrom').addEventListener('change', renderAllTransactions);
+  document.getElementById('filterDateTo').addEventListener('change', renderAllTransactions);
   document.getElementById('filterType').addEventListener('change', renderAllTransactions);
   document.getElementById('filterCategory').addEventListener('change', renderAllTransactions);
+  document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+}
+
+function clearFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('filterPlace').value = '';
+  document.getElementById('filterDateFrom').value = '';
+  document.getElementById('filterDateTo').value = '';
+  document.getElementById('filterType').value = '';
+  document.getElementById('filterCategory').value = '';
+  renderAllTransactions();
 }
 
 /* BUDGET MODAL */

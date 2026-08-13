@@ -1,49 +1,20 @@
 {
   "name": "financeiq",
-  "version": "1.0.0",
-  "description": "Sistema inteligente de gestao de financas pessoais",
-  "main": "electron.js",
+  "version": "2.0.0",
+  "description": "Sistema inteligente de gestao de financas pessoais (Express + Postgres)",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "electron": "electron .",
-    "rebuild": "electron-builder install-app-deps",
-    "build": "electron-builder"
+    "dev": "node server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.7.0",
+    "connect-pg-simple": "^9.0.1",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "express": "^4.21.0",
     "express-session": "^1.18.1",
-    "helmet": "^8.0.0"
-  },
-  "devDependencies": {
-    "electron": "^34.2.0",
-    "electron-builder": "^25.1.8"
-  },
-  "build": {
-    "appId": "com.financeiq.app",
-    "productName": "FinanceIQ",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "**/*",
-      "!node_modules/.cache"
-    ],
-    "npmRebuild": true,
-    "asar": false,
-    "win": {
-      "target": "nsis"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "FinanceIQ"
-    }
+    "helmet": "^8.0.0",
+    "pg": "^8.13.1"
   }
 }

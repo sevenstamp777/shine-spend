@@ -1,9 +1,11 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
-const BetterSQLite3SessionStore = require('./middleware/session-store');
+const PgStore = require('connect-pg-simple')(session);
 const helmet = require('helmet');
 const path = require('path');
+
+const ROOT = path.join(__dirname, path.basename(__dirname) === 'api' ? '..' : '.');
 
 const db = require('./database');
 const authRoutes = require('./routes/auth');
@@ -20,7 +22,7 @@ const PORT = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
 app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
+app.set('views', path.join(ROOT, 'views'));
 
 app.use(helmet({
   contentSecurityPolicy: {
@@ -37,10 +39,10 @@ app.use(helmet({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(ROOT, 'public')));
 
 app.use(session({
-  store: new BetterSQLite3SessionStore({ db: process.env.SESSION_DB_PATH || path.join(__dirname, 'sessions.db') }),
+  store: new PgStore({ pool: db.pool, tableName: 'session', schemaName: 'public', createTableIfMissing: true }),
   secret: process.env.SESSION_SECRET || 'default-secret-change-me',
   resave: false,
   saveUninitialized: false,
@@ -69,10 +71,19 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Erro interno do servidor' });
 });
 
-if (process.env.ELECTRON_MODE !== '1') {
-  app.listen(PORT, () => {
-    console.log(`FinanceIQ rodando em http://localhost:${PORT}`);
-  });
+if (process.env.VERCEL !== '1' && process.env.ELECTRON_MODE !== '1') {
+  db.init()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`FinanceIQ rodando em http://localhost:${PORT}`);
+      });
+    })
+    .catch((e) => {
+      console.error('Falha ao inicializar o banco:', e.message);
+      process.exit(1);
+    });
+} else {
+  db.init().catch((e) => console.error('Falha ao inicializar o banco:', e.message));
 }
 
 module.exports = app;

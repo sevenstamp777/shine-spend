@@ -1,11 +1,15 @@
 node_modules/
 .env
+.env.local
+.env.pulled
 *.db
 *.db-shm
 *.db-wal
 sessions.db*
 financeiq.db*
+.vercel
 .DS_Store
 dist/
 *.exe
 *.msi
+.env*

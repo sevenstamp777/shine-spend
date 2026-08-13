@@ -1,50 +1,60 @@
 const express = require('express');
-const db = require('../database');
+const { all, get, run } = require('../database');
 const { isAuthenticated } = require('../middleware/auth');
 const router = express.Router();
 
 router.use(isAuthenticated);
 
-router.get('/', (req, res) => {
-  const userId = req.session.user.id;
-  const goals = db.prepare('SELECT * FROM goals WHERE user_id = ?').all(userId);
-  res.json(goals);
+router.get('/', async (req, res, next) => {
+  try {
+    const userId = req.session.user.id;
+    const goals = await all('SELECT * FROM goals WHERE user_id = $1', [userId]);
+    res.json(goals);
+  } catch (e) { next(e); }
 });
 
-router.post('/', (req, res) => {
-  const userId = req.session.user.id;
-  const { name, icon, target, current, deadline } = req.body;
-  if (!name || !target) {
-    return res.status(400).json({ error: 'Nome e valor alvo são obrigatórios.' });
-  }
-  const result = db.prepare(
-    'INSERT INTO goals (user_id, name, icon, target, current, deadline) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(userId, name, icon || '🏆', target, current || 0, deadline || null);
-  const goal = db.prepare('SELECT * FROM goals WHERE id = ?').get(result.lastInsertRowid);
-  res.status(201).json(goal);
+router.post('/', async (req, res, next) => {
+  try {
+    const userId = req.session.user.id;
+    const { name, icon, target, current, deadline } = req.body;
+    if (!name || !target) {
+      return res.status(400).json({ error: 'Nome e valor alvo são obrigatórios.' });
+    }
+    const result = await run(
+      'INSERT INTO goals (user_id, name, icon, target, current, deadline) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [userId, name, icon || '🏆', target, current || 0, deadline || null]
+    );
+    const goal = await get('SELECT * FROM goals WHERE id = $1', [result.rows[0].id]);
+    res.status(201).json(goal);
+  } catch (e) { next(e); }
 });
 
-router.put('/:id', (req, res) => {
-  const userId = req.session.user.id;
-  const { id } = req.params;
-  const { name, icon, target, current, deadline } = req.body;
+router.put('/:id', async (req, res, next) => {
+  try {
+    const userId = req.session.user.id;
+    const { id } = req.params;
+    const { name, icon, target, current, deadline } = req.body;
 
-  const existing = db.prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?').get(id, userId);
-  if (!existing) return res.status(404).json({ error: 'Meta não encontrada.' });
+    const existing = await get('SELECT * FROM goals WHERE id = $1 AND user_id = $2', [id, userId]);
+    if (!existing) return res.status(404).json({ error: 'Meta não encontrada.' });
 
-  db.prepare(
-    'UPDATE goals SET name=?, icon=?, target=?, current=?, deadline=? WHERE id=? AND user_id=?'
-  ).run(name, icon || '🏆', target, current || 0, deadline || null, id, userId);
-  const updated = db.prepare('SELECT * FROM goals WHERE id = ?').get(id);
-  res.json(updated);
+    await run(
+      'UPDATE goals SET name=$1, icon=$2, target=$3, current=$4, deadline=$5 WHERE id=$6 AND user_id=$7',
+      [name, icon || '🏆', target, current || 0, deadline || null, id, userId]
+    );
+    const updated = await get('SELECT * FROM goals WHERE id = $1', [id]);
+    res.json(updated);
+  } catch (e) { next(e); }
 });
 
-router.delete('/:id', (req, res) => {
-  const userId = req.session.user.id;
-  const { id } = req.params;
-  const result = db.prepare('DELETE FROM goals WHERE id = ? AND user_id = ?').run(id, userId);
-  if (result.changes === 0) return res.status(404).json({ error: 'Meta não encontrada.' });
-  res.json({ ok: true });
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const userId = req.session.user.id;
+    const { id } = req.params;
+    const result = await run('DELETE FROM goals WHERE id = $1 AND user_id = $2', [id, userId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Meta não encontrada.' });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

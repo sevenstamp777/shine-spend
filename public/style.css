@@ -882,6 +882,226 @@ body {
   min-height: 100px;
 }
 
+/* Search section (advanced filters) */
+.search-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-field label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.filter-field input,
+.filter-field .filter-select {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.filter-field input:focus,
+.filter-field .filter-select:focus {
+  border-color: var(--accent);
+}
+
+.filter-field input::placeholder {
+  color: var(--text-muted);
+}
+
+.filter-actions {
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.filter-count {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  align-self: center;
+}
+
+/* Transaction extra info */
+.tx-place {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.tx-items-toggle {
+  margin-top: 6px;
+}
+
+.tx-items-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0;
+}
+
+.tx-items-btn:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.tx-items-list {
+  margin-top: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tx-item-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.tx-item-line em {
+  font-style: normal;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.tx-item-total {
+  border-top: 1px dashed var(--border);
+  padding-top: 6px;
+  margin-top: 4px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Items editor (fiscal coupon) */
+.items-editor {
+  margin-top: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.items-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.items-editor-header > span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.items-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-row {
+  display: grid;
+  grid-template-columns: 1fr 140px 100px 28px;
+  gap: 8px;
+  align-items: center;
+}
+
+.item-field input,
+.item-field select {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.item-field input:focus,
+.item-field select:focus {
+  border-color: var(--accent);
+}
+
+.item-remove {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--expense-bg);
+  color: var(--expense);
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.item-remove:hover {
+  background: var(--expense);
+  color: #fff;
+}
+
+.items-editor-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.items-editor-total span:last-child {
+  color: var(--accent);
+}
+
 /* ============================================================
    BUDGET PAGE
    ============================================================ */
@@ -1264,6 +1484,21 @@ body {
   animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+#transactionModal .modal {
+  max-width: 620px;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+#transactionModal .modal::-webkit-scrollbar {
+  width: 6px;
+}
+
+#transactionModal .modal::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
 @keyframes slideUp {
   from {
     opacity: 0;
@@ -1559,6 +1794,14 @@ form {
 
   .filter-group {
     flex-direction: column;
+  }
+
+  .item-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .item-row .item-field-desc {
+    grid-column: 1 / -1;
   }
 
   .card-value {
