@@ -15,6 +15,8 @@ const budgetsRoutes = require('./routes/budgets');
 const goalsRoutes = require('./routes/goals');
 const membersRoutes = require('./routes/members');
 const profileRoutes = require('./routes/profile');
+const paymentMethodsRoutes = require('./routes/payment-methods');
+const categoriesRoutes = require('./routes/categories');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -65,6 +67,8 @@ app.use('/api/budgets', budgetsRoutes);
 app.use('/api/goals', goalsRoutes);
 app.use('/api/members', membersRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/payment-methods', paymentMethodsRoutes);
+app.use('/api/categories', categoriesRoutes);
 
 app.use((err, req, res, _next) => {
   console.error(err.stack);

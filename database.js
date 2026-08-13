@@ -62,7 +62,20 @@ async function init() {
       transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
       description TEXT NOT NULL,
       category TEXT NOT NULL,
-      amount DOUBLE PRECISION NOT NULL
+      amount DOUBLE PRECISION NOT NULL,
+      quantity DOUBLE PRECISION DEFAULT 1,
+      unit TEXT DEFAULT 'un',
+      unit_price DOUBLE PRECISION DEFAULT 0,
+      brand TEXT DEFAULT '',
+      discount DOUBLE PRECISION DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS payment_methods (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(user_id, name)
     );
 
     CREATE TABLE IF NOT EXISTS budgets (
@@ -93,12 +106,34 @@ async function init() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS categories (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      category TEXT NOT NULL,
+      label TEXT NOT NULL,
+      icon TEXT DEFAULT '',
+      color TEXT DEFAULT '',
+      type TEXT NOT NULL DEFAULT 'expense' CHECK(type IN ('income', 'expense')),
+      is_builtin BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(user_id, category)
+    );
+
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT '';
+
+    ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS quantity DOUBLE PRECISION DEFAULT 1;
+    ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'un';
+    ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS unit_price DOUBLE PRECISION DEFAULT 0;
+    ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS brand TEXT DEFAULT '';
+    ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS discount DOUBLE PRECISION DEFAULT 0;
+
     CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
     CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
     CREATE INDEX IF NOT EXISTS idx_transaction_items_tx ON transaction_items(transaction_id);
     CREATE INDEX IF NOT EXISTS idx_budgets_user ON budgets(user_id);
     CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
     CREATE INDEX IF NOT EXISTS idx_members_user ON members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id);
   `);
 }
 

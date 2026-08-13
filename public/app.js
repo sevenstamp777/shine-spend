@@ -34,6 +34,14 @@ const API = {
   deleteMember(id) { return this._fetch('/api/members/' + id, { method: 'DELETE' }); },
   getProfile() { return this._fetch('/api/auth/me'); },
   updateProfile(data) { return this._fetch('/api/profile', { method: 'PUT', body: JSON.stringify(data) }); },
+  getPaymentMethods() { return this._fetch('/api/payment-methods'); },
+  createPaymentMethod(name) { return this._fetch('/api/payment-methods', { method: 'POST', body: JSON.stringify({ name }) }); },
+  updatePaymentMethod(id, name) { return this._fetch('/api/payment-methods/' + id, { method: 'PUT', body: JSON.stringify({ name }) }); },
+  deletePaymentMethod(id) { return this._fetch('/api/payment-methods/' + id, { method: 'DELETE' }); },
+  getCategories() { return this._fetch('/api/categories'); },
+  createCategory(data) { return this._fetch('/api/categories', { method: 'POST', body: JSON.stringify(data) }); },
+  updateCategory(dbId, data) { return this._fetch('/api/categories/' + dbId, { method: 'PUT', body: JSON.stringify(data) }); },
+  deleteCategory(dbId) { return this._fetch('/api/categories/' + dbId, { method: 'DELETE' }); },
   logout() { return this._fetch('/api/auth/logout', { method: 'POST' }); },
 };
 
@@ -61,9 +69,67 @@ const CATEGORIES = {
 };
 
 const ALL_CATEGORIES = [...CATEGORIES.income, ...CATEGORIES.expense];
+let dynamicCategories = {};
+let userCategories = [];
+
+function categoryColor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360}, 70%, 52%)`;
+}
+
+function categoryIcon(id) {
+  const s = String(id).toLowerCase();
+  const map = {
+    'aliment': '🛒', 'moradia': '🏠', 'aluguel': '🏠', 'saude': '💊', 'combust': '⛽',
+    'carro': '🚗', 'casa': '🧹', 'igreja': '⛪', 'raca': '🐕', 'cachorro': '🐕',
+    'telefone': '📱', 'celular': '📱', 'negocio': '💼', 'receita': '💰', 'outro': '📌',
+    'transporte': '🚗', 'higiene': '🧴', 'vet': '🐾',
+  };
+  for (const k in map) if (s.includes(k)) return map[k];
+  return '💰';
+}
+
+function getAllCategories() {
+  const map = new Map();
+  ALL_CATEGORIES.forEach(c => map.set(c.id, { ...c, builtin: true }));
+  userCategories.forEach(c => {
+    map.set(c.id, {
+      id: c.id,
+      dbId: c.dbId,
+      label: c.label || c.id,
+      icon: c.icon || categoryIcon(c.id),
+      color: c.color || categoryColor(c.id),
+      type: c.type || 'expense',
+      builtin: !!c.builtin,
+    });
+  });
+  Object.values(dynamicCategories).forEach(c => {
+    if (!map.has(c.id)) map.set(c.id, { ...c, builtin: false });
+  });
+  return [...map.values()];
+}
 
 function getCategoryById(id) {
-  return ALL_CATEGORIES.find(c => c.id === id) || { id, label: id, icon: '💰', color: '#6c63ff' };
+  return getAllCategories().find(c => c.id === id) || { id, label: id, icon: categoryIcon(id), color: categoryColor(id) };
+}
+
+function buildCategoryRegistry() {
+  dynamicCategories = {};
+  const fixedIds = new Set(ALL_CATEGORIES.map(c => c.id));
+  const seen = new Set();
+  const add = (id) => {
+    if (!id) return;
+    id = String(id);
+    if (seen.has(id) || fixedIds.has(id)) return;
+    seen.add(id);
+    dynamicCategories[id] = { id, label: id, icon: categoryIcon(id), color: categoryColor(id) };
+  };
+  transactions.forEach(t => {
+    add(t.category);
+    (t.items || []).forEach(i => add(i.category));
+  });
+  budgets.forEach(b => add(b.category));
 }
 
 let transactions = [];
@@ -71,6 +137,7 @@ let budgets = [];
 let goals = [];
 let userProfile = { name: 'Usuário', email: '', avatar: '' };
 let familyMembers = [];
+let paymentMethods = [];
 
 let currentMonth = new Date().getMonth();
 let currentYear = new Date().getFullYear();
@@ -121,6 +188,10 @@ function fmtCurrency(val) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 }
 
+function round2(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
 function fmtDate(dateStr) {
   const [y, m, d] = dateStr.split('-');
   return `${d}/${m}/${y}`;
@@ -133,21 +204,51 @@ function getMonthTransactions() {
   });
 }
 
+function pickInitialMonth() {
+  if (!transactions.length) return;
+  const now = new Date();
+  const nowIdx = now.getFullYear() * 12 + now.getMonth();
+  const months = new Map();
+  for (const t of transactions) {
+    const d = new Date(t.date + 'T00:00:00');
+    const k = d.getFullYear() * 12 + d.getMonth();
+    months.set(k, (months.get(k) || 0) + 1);
+  }
+  const sorted = [...months.entries()].sort((a, b) => b[0] - a[0]);
+  let target = sorted[0][0];
+  if (target === nowIdx && sorted.length > 1 && sorted[0][1] < sorted[1][1]) {
+    target = sorted[1][0];
+  }
+  currentYear = Math.floor(target / 12);
+  currentMonth = target % 12;
+}
+
 async function loadAllData() {
   showLoading('Carregando dados...');
   try {
-    const [txs, b, g, m, profile] = await Promise.all([
+    const [txs, b, g, m, profile, pms, cats] = await Promise.all([
       API.getTransactions(),
       API.getBudgets(),
       API.getGoals(),
       API.getMembers(),
       API.getProfile(),
+      API.getPaymentMethods(),
+      API.getCategories(),
     ]);
     transactions = txs;
+    pickInitialMonth();
+    updateMonthLabel();
     budgets = b;
     goals = g;
     familyMembers = m;
     userProfile = profile.user;
+    paymentMethods = pms;
+    userCategories = cats;
+    buildCategoryRegistry();
+    populatePaymentMethodSelects();
+    populateFilterCategorySelect();
+    renderPaymentMethods();
+    renderCategories();
   } catch (e) {
     console.error('Erro ao carregar dados:', e);
   }
@@ -158,6 +259,214 @@ function logout() {
   API.logout().finally(() => {
     window.location.href = '/login';
   });
+}
+
+function populatePaymentMethodSelects() {
+  const opts = paymentMethods.map(m => `<option value="${escAttr(m.name)}">${escHtml(m.name)}</option>`).join('');
+
+  const sel = document.getElementById('txPaymentMethod');
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">Selecione...</option>' + opts;
+    if (prev) sel.value = prev;
+  }
+
+  const fsel = document.getElementById('filterPaymentMethod');
+  if (fsel) {
+    const fprev = fsel.value;
+    fsel.innerHTML = '<option value="">Todas as formas</option>' + opts;
+    if (fprev) fsel.value = fprev;
+  }
+}
+
+function populateFilterCategorySelect() {
+  const sel = document.getElementById('filterCategory');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Todas as categorias</option>';
+  getAllCategories().forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.icon} ${c.label}`;
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+}
+
+function renderPaymentMethods() {
+  const container = document.getElementById('paymentMethodsList');
+  if (!container) return;
+  if (!paymentMethods.length) {
+    container.innerHTML = emptyState('💳', 'Nenhuma forma de pagamento. Adicione acima.');
+    return;
+  }
+  container.innerHTML = paymentMethods.map(m => `
+    <div class="payment-method-item">
+      <span class="payment-method-name">💳 ${escHtml(m.name)}</span>
+      <div class="tx-actions">
+        <button type="button" class="tx-action-btn edit-pm" data-id="${m.id}" title="Renomear">✏️</button>
+        <button type="button" class="tx-action-btn delete delete-pm" data-id="${m.id}" title="Remover">🗑️</button>
+      </div>
+    </div>`).join('');
+
+  container.querySelectorAll('.edit-pm').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.id);
+      const m = paymentMethods.find(x => x.id === id);
+      const name = prompt('Renomear forma de pagamento:', m ? m.name : '');
+      if (!name || !name.trim()) return;
+      try {
+        const updated = await API.updatePaymentMethod(id, name.trim());
+        const idx = paymentMethods.findIndex(x => x.id === id);
+        if (idx !== -1) paymentMethods[idx] = updated;
+        renderPaymentMethods();
+        populatePaymentMethodSelects();
+        showToast('Forma de pagamento renomeada.', 'success');
+      } catch (e) {
+        showToast(e.message || 'Erro ao renomear.', 'error');
+      }
+    });
+  });
+
+  container.querySelectorAll('.delete-pm').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.id);
+      const m = paymentMethods.find(x => x.id === id);
+      const ok = await customConfirm(`Remover "${m ? m.name : 'esta forma'}"? Os lançamentos antigos mantêm o valor salvo.`, '💳', 'Remover Forma de Pagamento');
+      if (!ok) return;
+      try {
+        await API.deletePaymentMethod(id);
+        paymentMethods = paymentMethods.filter(x => x.id !== id);
+        renderPaymentMethods();
+        populatePaymentMethodSelects();
+        showToast('Forma de pagamento removida.', 'info');
+      } catch (e) {
+        showToast('Erro ao remover.', 'error');
+      }
+    });
+  });
+}
+
+const CATEGORY_EMOJIS = ['💰', '📌', '🛒', '🏠', '🚗', '💊', '⛽', '🐕', '🧴', '📱', '⛪', '🎮', '👗', '🎓', '💡', '🍕', '🐾', '🛍️', '🎯', '💼', '📈', '🏋️', '✈️', '🎬'];
+
+let editingCategoryDbId = null;
+
+function catIcon(c) {
+  return c.icon || categoryIcon(c.id);
+}
+
+function catColor(c) {
+  return c.color || categoryColor(c.id);
+}
+
+function renderEmojiPalette() {
+  const el = document.getElementById('categoryEmojiPalette');
+  if (!el) return;
+  el.innerHTML = CATEGORY_EMOJIS.map(e => `<button type="button" class="emoji-chip" data-emoji="${escAttr(e)}">${e}</button>`).join('');
+  el.querySelectorAll('.emoji-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const input = document.getElementById('newCategoryIcon');
+      input.value = chip.dataset.emoji;
+      input.focus();
+    });
+  });
+}
+
+function renderCategories() {
+  const container = document.getElementById('categoriesList');
+  if (!container) return;
+  const cats = getAllCategories();
+  if (!cats.length) {
+    container.innerHTML = emptyState('🏷️', 'Nenhuma categoria cadastrada.');
+    return;
+  }
+  container.innerHTML = cats.map(c => `
+    <div class="category-item">
+      <span class="category-swatch" style="background:${catColor(c)};opacity:.15;">&nbsp;</span>
+      <span class="category-icon" style="color:${catColor(c)};">${catIcon(c)}</span>
+      <span class="category-name">${escHtml(c.label)}</span>
+      <span class="category-type ${c.type === 'income' ? 'type-income' : 'type-expense'}">${c.type === 'income' ? 'Receita' : 'Despesa'}</span>
+      ${c.builtin ? '<span class="category-badge">Padrão</span>' : ''}
+      <div class="tx-actions">
+        <button type="button" class="tx-action-btn edit-cat" data-dbid="${c.dbId}" data-id="${escAttr(c.id)}" title="Editar">✏️</button>
+        ${c.builtin ? '' : `<button type="button" class="tx-action-btn delete delete-cat" data-dbid="${c.dbId}" data-id="${escAttr(c.id)}" title="Remover">🗑️</button>`}
+      </div>
+    </div>`).join('');
+
+  container.querySelectorAll('.edit-cat').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const dbId = parseInt(btn.dataset.dbid);
+      const c = userCategories.find(x => x.dbId === dbId) || getAllCategories().find(x => x.id === btn.dataset.id);
+      if (!c) return;
+      editingCategoryDbId = dbId;
+      document.getElementById('newCategoryName').value = c.label;
+      document.getElementById('newCategoryType').value = c.type === 'income' ? 'income' : 'expense';
+      document.getElementById('newCategoryIcon').value = catIcon(c);
+      document.getElementById('newCategoryColor').value = catColor(c);
+      document.getElementById('categoryFormSubmit').textContent = 'Salvar Alterações';
+      document.getElementById('categoryFormCancel').style.display = 'inline-block';
+      document.getElementById('newCategoryName').focus();
+      document.querySelector('#page-settings .settings-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  container.querySelectorAll('.delete-cat').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const dbId = parseInt(btn.dataset.dbid);
+      const c = userCategories.find(x => x.dbId === dbId) || getAllCategories().find(x => x.id === btn.dataset.id);
+      const ok = await customConfirm(`Remover a categoria "${c ? c.label : ''}"? Lançamentos existentes mantêm o valor salvo.`, '🏷️', 'Remover Categoria');
+      if (!ok) return;
+      try {
+        await API.deleteCategory(dbId);
+        userCategories = userCategories.filter(x => x.dbId !== dbId);
+        resetCategoryForm();
+        renderCategories();
+        populateFilterCategorySelect();
+        renderAll();
+        showToast('Categoria removida.', 'info');
+      } catch (e) {
+        showToast(e.message || 'Erro ao remover.', 'error');
+      }
+    });
+  });
+}
+
+function resetCategoryForm() {
+  editingCategoryDbId = null;
+  document.getElementById('categoryForm').reset();
+  document.getElementById('newCategoryIcon').value = '💰';
+  document.getElementById('newCategoryColor').value = '#6c63ff';
+  document.getElementById('categoryFormSubmit').textContent = 'Adicionar';
+  document.getElementById('categoryFormCancel').style.display = 'none';
+}
+
+async function saveCategoryFromForm() {
+  const label = document.getElementById('newCategoryName').value.trim();
+  if (!label) {
+    showToast('Informe o nome da categoria.', 'error');
+    return;
+  }
+  const type = document.getElementById('newCategoryType').value;
+  const icon = document.getElementById('newCategoryIcon').value.trim();
+  const color = document.getElementById('newCategoryColor').value;
+  try {
+    if (editingCategoryDbId) {
+      const updated = await API.updateCategory(editingCategoryDbId, { label, type, icon, color });
+      const idx = userCategories.findIndex(x => x.dbId === editingCategoryDbId);
+      if (idx !== -1) userCategories[idx] = { ...userCategories[idx], ...updated, dbId: editingCategoryDbId, builtin: userCategories[idx].builtin };
+      showToast('Categoria atualizada!', 'success');
+    } else {
+      const created = await API.createCategory({ label, type, icon, color });
+      userCategories.push(created);
+      showToast('Categoria adicionada!', 'success');
+    }
+    resetCategoryForm();
+    renderCategories();
+    populateFilterCategorySelect();
+    renderAll();
+  } catch (e) {
+    showToast(e.message || 'Erro ao salvar categoria.', 'error');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -319,6 +628,8 @@ function renderCards() {
   const expenseCount = txs.filter(t => t.type === 'expense').length;
   document.getElementById('incomeCount').textContent = `${incomeCount} entrada${incomeCount !== 1 ? 's' : ''}`;
   document.getElementById('expenseCount').textContent = `${expenseCount} saída${expenseCount !== 1 ? 's' : ''}`;
+  const trendEl = document.getElementById('monthTrendLabel');
+  if (trendEl) trendEl.textContent = MONTHS[currentMonth];
 }
 
 /* CASHFLOW CHART (Bar) */
@@ -529,6 +840,7 @@ function renderAllTransactions() {
   const dateTo = document.getElementById('filterDateTo')?.value || '';
   const typeF = document.getElementById('filterType')?.value || '';
   const catF = document.getElementById('filterCategory')?.value || '';
+  const pmF = document.getElementById('filterPaymentMethod')?.value || '';
 
   let txs = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -536,20 +848,25 @@ function renderAllTransactions() {
     txs = txs.filter(t => {
       const haystack = [
         t.description.toLowerCase(),
+        t.place || '',
+        t.payment_method || '',
         getCategoryById(t.category).label.toLowerCase(),
         ...(t.items || []).map(i => i.description.toLowerCase()),
+        ...(t.items || []).map(i => i.brand || ''),
+        ...(t.items || []).map(i => i.unit || ''),
         ...(t.items || []).map(i => getCategoryById(i.category).label.toLowerCase()),
       ].join(' ');
       return haystack.includes(search);
     });
   }
-  if (placeF) txs = txs.filter(t => (t.place || '').toLowerCase().includes(placeF));
+  if (placeF) txs = txs.filter(t => (t.place || t.description || '').toLowerCase().includes(placeF));
   if (dateFrom) txs = txs.filter(t => t.date >= dateFrom);
   if (dateTo) txs = txs.filter(t => t.date <= dateTo);
   if (typeF) txs = txs.filter(t => t.type === typeF);
   if (catF) {
     txs = txs.filter(t => t.category === catF || (t.items || []).some(i => i.category === catF));
   }
+  if (pmF) txs = txs.filter(t => (t.payment_method || '') === pmF);
 
   const countEl = document.getElementById('filterCount');
   if (countEl) countEl.textContent = `${txs.length} resultado${txs.length !== 1 ? 's' : ''}`;
@@ -557,6 +874,56 @@ function renderAllTransactions() {
   const container = document.getElementById('allTransactions');
   container.innerHTML = txs.length === 0 ? emptyState('📋', 'Nenhuma transação encontrada.') : txs.map(txHTML).join('');
   attachTxActions(container);
+  renderAggregations(txs);
+}
+
+function aggregateItems(txs) {
+  const map = {};
+  txs.filter(t => t.type === 'expense').forEach(t => {
+    (t.items || []).forEach(i => {
+      const name = String(i.description || '').trim();
+      if (!name) return;
+      if (!map[name]) map[name] = { name, total: 0, count: 0, unit: i.unit || '' };
+      map[name].total += Number(i.amount) || 0;
+      map[name].count++;
+    });
+  });
+  return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 6);
+}
+
+function aggregateBy(txs, keyFn) {
+  const map = {};
+  txs.filter(t => t.type === 'expense').forEach(t => {
+    const name = String(keyFn(t) || '').trim() || 'Sem local';
+    if (!map[name]) map[name] = { name, total: 0, count: 0 };
+    map[name].total += Number(t.amount) || 0;
+    map[name].count++;
+  });
+  return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 6);
+}
+
+function renderTopList(id, list) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = list.length ? list.map((x, i) => `
+    <div class="agg-row">
+      <span class="agg-rank">${i + 1}</span>
+      <span class="agg-name">${escHtml(x.name)}${x.unit && x.unit !== 'un' ? ` <small>${escHtml(x.unit)}</small>` : ''}${x.count > 1 ? ` <small>×${x.count}</small>` : ''}</span>
+      <span class="agg-total">${fmtCurrency(x.total)}</span>
+    </div>`).join('') : '<span class="agg-empty">Sem dados no filtro atual.</span>';
+}
+
+function renderAggregations(txs) {
+  const panel = document.getElementById('aggPanel');
+  if (!panel) return;
+  const exps = txs.filter(t => t.type === 'expense');
+  const incs = txs.filter(t => t.type === 'income');
+  document.getElementById('aggTotalExpense').textContent = fmtCurrency(exps.reduce((s, t) => s + t.amount, 0));
+  document.getElementById('aggTotalIncome').textContent = fmtCurrency(incs.reduce((s, t) => s + t.amount, 0));
+  document.getElementById('aggCount').textContent = String(txs.length);
+  renderTopList('aggTopProducts', aggregateItems(txs));
+  renderTopList('aggTopPlaces', aggregateBy(txs, t => t.place || t.description));
+  renderTopList('aggTopCategories', aggregateBy(txs, t => `${getCategoryById(t.category).icon} ${getCategoryById(t.category).label}`));
 }
 
 function txHTML(t) {
@@ -565,14 +932,20 @@ function txHTML(t) {
   const color = t.type === 'income' ? 'var(--income)' : 'var(--expense)';
   const items = (t.items && t.items.length) ? t.items : [];
   const itemMeta = items.length > 1 ? ` · ${items.length} itens` : '';
-  const place = t.place ? `<div class="tx-place">📍 ${escHtml(t.place)}</div>` : '';
+  const pm = t.payment_method ? `<span class="pm-badge">💳 ${escHtml(t.payment_method)}</span>` : '';
+  const place = t.place && t.place !== t.description ? `<div class="tx-place">📍 ${escHtml(t.place)}</div>` : '';
   const itemsHTML = items.length > 1 ? `
     <div class="tx-items-toggle">
       <button type="button" class="tx-items-btn" data-id="${t.id}">Ver itens (${items.length}) ▾</button>
       <div class="tx-items-list" id="txItems-${t.id}" style="display:none;">
         ${items.map(i => {
           const icat = getCategoryById(i.category);
-          return `<div class="tx-item-line"><span>${escHtml(i.description)} <em>${icat.label}</em></span><span>${fmtCurrency(i.amount)}</span></div>`;
+          const qty = i.quantity && Number(i.quantity) !== 1 ? `${i.quantity}× ` : '';
+          const unit = i.unit && i.unit !== 'un' ? ` ${escHtml(i.unit)}` : '';
+          const unitRef = (i.unitPrice || i.unitPrice === 0) ? `${fmtCurrency(i.unitPrice)}${unit}` : '';
+          const disc = i.discount ? ` · -${fmtCurrency(i.discount)}` : '';
+          const brand = i.brand ? ` · ${escHtml(i.brand)}` : '';
+          return `<div class="tx-item-line"><span>${escHtml(i.description)} <em>${icat.label}</em><small>${qty}${unitRef}${brand}${disc}</small></span><span>${fmtCurrency(i.amount)}</span></div>`;
         }).join('')}
         <div class="tx-item-line tx-item-total"><span>Total</span><span>${fmtCurrency(t.amount)}</span></div>
       </div>
@@ -583,6 +956,7 @@ function txHTML(t) {
       <div class="tx-info">
         <div class="tx-desc">${escHtml(t.description)}</div>
         <div class="tx-meta">${cat.label}${itemMeta}${t.note ? ' · ' + escHtml(t.note) : ''}</div>
+        ${pm}
         ${place}
         ${itemsHTML}
       </div>
@@ -655,23 +1029,62 @@ function initTransactionModal() {
   document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
 }
 
+const UNITS = ['un', 'kg', 'g', 'L', 'mL', 'dúzia', 'pacote', 'lata', 'caixa', 'cx', 'pct'];
+
+function itemCategoryOptions() {
+  const seen = new Set();
+  const opts = [];
+  getAllCategories().forEach(c => {
+    if (seen.has(c.id)) return;
+    seen.add(c.id);
+    opts.push(c);
+  });
+  return opts;
+}
+
 function itemRowHTML(item = {}) {
   const description = item.description || '';
+  const brand = item.brand || '';
   const category = item.category || '';
-  const amount = item.amount != null ? item.amount : '';
+  const qty = item.quantity != null ? item.quantity : 1;
+  const unit = item.unit || 'un';
+  const price = item.unitPrice != null ? item.unitPrice : (item.amount != null && qty ? round2(item.amount / qty) : '');
+  const discount = item.discount || '';
+  const discountType = item.discountType || 'amount';
+  const catOpts = itemCategoryOptions().map(c => `<option value="${escAttr(c.id)}" ${c.id === category ? 'selected' : ''}>${c.icon} ${escHtml(c.label)}</option>`).join('');
+  const unitOpts = UNITS.filter(u => u !== 'un').map(u => `<option value="${u}" ${u === unit ? 'selected' : ''}>${u}</option>`).join('');
   return `
     <div class="item-row">
       <div class="item-field item-field-desc">
-        <input type="text" class="item-description" placeholder="Ex: Arroz 5kg" value="${escAttr(description)}" />
+        <input type="text" class="item-description" placeholder="Produto" value="${escAttr(description)}" />
       </div>
-      <div class="item-field">
+      <div class="item-field item-field-brand">
+        <input type="text" class="item-brand" placeholder="Marca" value="${escAttr(brand)}" />
+      </div>
+      <div class="item-field item-field-cat">
         <select class="item-category">
           <option value="">Categoria</option>
-          ${CATEGORIES[currentType].map(c => `<option value="${c.id}" ${c.id === category ? 'selected' : ''}>${c.icon} ${c.label}</option>`).join('')}
+          ${catOpts}
         </select>
       </div>
-      <div class="item-field item-field-amount">
-        <input type="number" class="item-amount" placeholder="0,00" step="0.01" min="0.01" value="${amount}" />
+      <div class="item-field item-field-qty">
+        <input type="number" class="item-qty" placeholder="Qtd" step="0.001" min="0.001" value="${qty}" />
+      </div>
+      <div class="item-field item-field-unit">
+        <select class="item-unit">
+          <option value="un" ${unit === 'un' ? 'selected' : ''}>un</option>
+          ${unitOpts}
+        </select>
+      </div>
+      <div class="item-field item-field-price">
+        <input type="number" class="item-price" placeholder="Vlr unit" step="0.01" min="0" value="${price}" />
+      </div>
+      <div class="item-field item-field-discount">
+        <input type="number" class="item-discount" placeholder="Desconto" step="0.01" min="0" value="${discount}" />
+        <button type="button" class="discount-toggle" title="Alternar R$ / %">${discountType === 'percent' ? '%' : 'R$'}</button>
+      </div>
+      <div class="item-field item-field-itemtotal">
+        <span class="item-line-total">R$ 0,00</span>
       </div>
       <button type="button" class="item-remove" title="Remover item">✕</button>
     </div>`;
@@ -682,33 +1095,60 @@ function addItemRow(item = {}) {
   const row = document.createElement('div');
   row.innerHTML = itemRowHTML(item);
   const node = row.firstElementChild;
+
   node.querySelector('.item-remove').addEventListener('click', () => {
     node.remove();
     updateItemsTotal();
   });
-  node.querySelector('.item-category').addEventListener('change', updateItemsTotal);
-  node.querySelectorAll('input').forEach(inp => inp.addEventListener('input', updateItemsTotal));
+  const toggle = node.querySelector('.discount-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      toggle.textContent = toggle.textContent === '%' ? 'R$' : '%';
+      updateItemsTotal();
+    });
+  }
+  node.querySelectorAll('input, select').forEach(inp => inp.addEventListener('input', updateItemsTotal));
   list.appendChild(node);
   updateItemsTotal();
+}
+
+function readItemRow(row) {
+  const description = row.querySelector('.item-description').value.trim();
+  const brand = row.querySelector('.item-brand').value.trim();
+  const category = row.querySelector('.item-category').value;
+  const quantity = parseFloat(row.querySelector('.item-qty').value);
+  const qty = !isNaN(quantity) && quantity > 0 ? quantity : 1;
+  const unit = row.querySelector('.item-unit').value || 'un';
+  const price = parseFloat(row.querySelector('.item-price').value);
+  const unitPrice = !isNaN(price) && price >= 0 ? price : 0;
+  const discount = parseFloat(row.querySelector('.item-discount').value) || 0;
+  const discountType = row.querySelector('.discount-toggle').textContent === '%' ? 'percent' : 'amount';
+  const rawAmount = qty * unitPrice;
+  const discountAmount = discountType === 'percent' ? round2(rawAmount * discount / 100) : round2(discount);
+  const amount = round2(Math.max(0, rawAmount - discountAmount));
+  return { description, brand, category, quantity: qty, unit, unitPrice: round2(unitPrice), discount: round2(discount), discountType, amount };
 }
 
 function collectItems() {
   const rows = document.querySelectorAll('#itemsList .item-row');
   const items = [];
   rows.forEach(row => {
-    const description = row.querySelector('.item-description').value.trim();
-    const category = row.querySelector('.item-category').value;
-    const amount = parseFloat(row.querySelector('.item-amount').value);
-    if (description && category && !isNaN(amount) && amount > 0) {
-      items.push({ description, category, amount });
+    const it = readItemRow(row);
+    if (it.description && it.category && it.amount > 0) {
+      items.push(it);
     }
   });
   return items;
 }
 
 function updateItemsTotal() {
-  const items = collectItems();
-  const total = items.reduce((s, i) => s + i.amount, 0);
+  let total = 0;
+  document.querySelectorAll('#itemsList .item-row').forEach(row => {
+    const it = readItemRow(row);
+    const lineTotal = row.querySelector('.item-line-total');
+    if (lineTotal) lineTotal.textContent = fmtCurrency(it.amount);
+    total += it.amount;
+  });
   const totalEl = document.getElementById('itemsTotal');
   if (totalEl) totalEl.textContent = fmtCurrency(total);
 }
@@ -725,6 +1165,7 @@ function openTransactionModal(tx = null) {
   document.getElementById('txPlace').value = tx ? (tx.place || '') : '';
   document.getElementById('txDate').value = tx ? tx.date : new Date().toISOString().split('T')[0];
   document.getElementById('txNote').value = tx ? (tx.note || '') : '';
+  document.getElementById('txPaymentMethod').value = tx ? (tx.payment_method || '') : '';
 
   const itemsList = document.getElementById('itemsList');
   itemsList.innerHTML = '';
@@ -748,18 +1189,18 @@ function setTransactionType(type) {
   document.getElementById('typeIncome').classList.toggle('income-btn', type === 'income');
   document.getElementById('typeExpense').classList.toggle('active', type === 'expense');
   document.getElementById('typeExpense').classList.toggle('expense-btn', type === 'expense');
-  document.querySelectorAll('#itemsList .item-category').forEach(sel => {
-    const prevVal = sel.value;
-    sel.innerHTML = `<option value="">Categoria</option>` + CATEGORIES[type].map(c => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
-    if (prevVal && CATEGORIES[type].some(c => c.id === prevVal)) sel.value = prevVal;
-  });
 }
 
 function populateCategorySelect(selectId, type) {
   const sel = document.getElementById(selectId);
   const prevVal = sel.value;
   sel.innerHTML = '<option value="">Selecione...</option>';
-  CATEGORIES[type].forEach(c => {
+  const all = getAllCategories();
+  const opts = type ? all.filter(c => c.type === type) : all;
+  const seen = new Set();
+  opts.forEach(c => {
+    if (seen.has(c.id)) return;
+    seen.add(c.id);
     const opt = document.createElement('option');
     opt.value = c.id;
     opt.textContent = `${c.icon} ${c.label}`;
@@ -775,6 +1216,7 @@ async function saveTransactionFromForm() {
     place: document.getElementById('txPlace').value.trim(),
     date: document.getElementById('txDate').value,
     note: document.getElementById('txNote').value.trim(),
+    payment_method: document.getElementById('txPaymentMethod').value,
     items: collectItems(),
   };
   if (!txData.description || !txData.date || txData.items.length === 0) {
@@ -825,13 +1267,7 @@ async function deleteTransaction(id) {
 
 /* FILTERS */
 function initFilters() {
-  const sel = document.getElementById('filterCategory');
-  ALL_CATEGORIES.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = `${c.icon} ${c.label}`;
-    sel.appendChild(opt);
-  });
+  populateFilterCategorySelect();
 
   document.getElementById('searchInput').addEventListener('input', renderAllTransactions);
   document.getElementById('filterPlace').addEventListener('input', renderAllTransactions);
@@ -839,6 +1275,7 @@ function initFilters() {
   document.getElementById('filterDateTo').addEventListener('change', renderAllTransactions);
   document.getElementById('filterType').addEventListener('change', renderAllTransactions);
   document.getElementById('filterCategory').addEventListener('change', renderAllTransactions);
+  document.getElementById('filterPaymentMethod').addEventListener('change', renderAllTransactions);
   document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
 }
 
@@ -849,6 +1286,7 @@ function clearFilters() {
   document.getElementById('filterDateTo').value = '';
   document.getElementById('filterType').value = '';
   document.getElementById('filterCategory').value = '';
+  document.getElementById('filterPaymentMethod').value = '';
   renderAllTransactions();
 }
 
@@ -1141,14 +1579,35 @@ function initSettings() {
     const name = document.getElementById('profileName').value.trim();
     const email = document.getElementById('profileEmail').value.trim();
     const avatar = userProfile.avatar || '';
+    const currentPassword = document.getElementById('profileCurrentPassword').value;
+    const newPassword = document.getElementById('profileNewPassword').value;
 
     try {
-      const result = await API.updateProfile({ name, email, avatar });
+      const result = await API.updateProfile({ name, email, avatar, currentPassword, newPassword });
       userProfile = result.user;
       setUserInfo();
-      showToast('Perfil atualizado com sucesso!', 'success');
-    } catch (e) {
-      showToast('Erro ao atualizar perfil.', 'error');
+      document.getElementById('profileCurrentPassword').value = '';
+      document.getElementById('profileNewPassword').value = '';
+      showToast(newPassword ? 'Perfil e senha atualizados!' : 'Perfil atualizado com sucesso!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Erro ao atualizar perfil.', 'error');
+    }
+  });
+
+  document.getElementById('paymentMethodForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('newPaymentMethod');
+    const name = input.value.trim();
+    if (!name) return;
+    try {
+      const m = await API.createPaymentMethod(name);
+      paymentMethods.push(m);
+      input.value = '';
+      renderPaymentMethods();
+      populatePaymentMethodSelects();
+      showToast('Forma de pagamento adicionada!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Erro ao adicionar.', 'error');
     }
   });
 
@@ -1175,6 +1634,14 @@ function initSettings() {
   document.getElementById('closeMemberModal').addEventListener('click', closeMemberModal);
   document.getElementById('cancelMember').addEventListener('click', closeMemberModal);
   document.getElementById('memberForm').addEventListener('submit', saveMember);
+
+  renderEmojiPalette();
+  renderCategories();
+  document.getElementById('categoryForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveCategoryFromForm();
+  });
+  document.getElementById('categoryFormCancel').addEventListener('click', resetCategoryForm);
 
   renderMembers();
 }

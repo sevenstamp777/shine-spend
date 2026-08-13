@@ -136,7 +136,7 @@
                         <div class="card-value" id="totalBalance">R$ 0,00</div>
                         <div class="card-trend" id="balanceTrend">
                             <span class="trend-icon">↑</span>
-                            <span>Este mês</span>
+                            <span id="monthTrendLabel">Este mês</span>
                         </div>
                     </div>
 
@@ -267,9 +267,46 @@
                                 <option value="">Todas as categorias</option>
                             </select>
                         </div>
+                        <div class="filter-field">
+                            <label for="filterPaymentMethod">Forma de Pagamento</label>
+                            <select id="filterPaymentMethod" class="filter-select">
+                                <option value="">Todas as formas</option>
+                            </select>
+                        </div>
                         <div class="filter-field filter-actions">
                             <button type="button" class="btn-secondary small" id="clearFiltersBtn">Limpar filtros</button>
                             <span id="filterCount" class="filter-count"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="agg-panel" id="aggPanel">
+                    <div class="agg-kpis">
+                        <div class="agg-kpi">
+                            <span class="agg-kpi-label">Despesas no filtro</span>
+                            <span class="agg-kpi-value expense-value" id="aggTotalExpense">R$ 0,00</span>
+                        </div>
+                        <div class="agg-kpi">
+                            <span class="agg-kpi-label">Receitas no filtro</span>
+                            <span class="agg-kpi-value income-value" id="aggTotalIncome">R$ 0,00</span>
+                        </div>
+                        <div class="agg-kpi">
+                            <span class="agg-kpi-label">Transações</span>
+                            <span class="agg-kpi-value" id="aggCount">0</span>
+                        </div>
+                    </div>
+                    <div class="agg-grid">
+                        <div class="agg-block">
+                            <h4>🏆 Produtos que mais pesam no bolso</h4>
+                            <div id="aggTopProducts" class="agg-list"></div>
+                        </div>
+                        <div class="agg-block">
+                            <h4>📍 Onde você mais compra</h4>
+                            <div id="aggTopPlaces" class="agg-list"></div>
+                        </div>
+                        <div class="agg-block">
+                            <h4>📂 Categorias com maior gasto</h4>
+                            <div id="aggTopCategories" class="agg-list"></div>
                         </div>
                     </div>
                 </div>
@@ -377,8 +414,74 @@
                                 <label for="profileEmail">Email</label>
                                 <input type="email" id="profileEmail" placeholder="seu@email.com" />
                             </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="profileCurrentPassword">Senha atual</label>
+                                    <input type="password" id="profileCurrentPassword" placeholder="••••••••" autocomplete="current-password" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="profileNewPassword">Nova senha</label>
+                                    <input type="password" id="profileNewPassword" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+                                </div>
+                            </div>
                             <button type="submit" class="btn-primary" style="margin-top:10px;">Salvar Perfil</button>
                         </form>
+                    </div>
+
+                    <div class="section-card settings-card">
+                        <div class="section-header">
+                            <h3>Formas de Pagamento</h3>
+                        </div>
+                        <p class="page-desc" style="margin-bottom:16px;">Adicione ou remova as formas de pagamento usadas nos seus lançamentos.</p>
+                        <form id="paymentMethodForm" class="settings-form" style="flex-direction:row;gap:8px;">
+                            <div class="form-group" style="flex:1;">
+                                <input type="text" id="newPaymentMethod" placeholder="Ex: Cartão XP, PicPay, Cartão Banco do Brasil..." />
+                            </div>
+                            <button type="submit" class="btn-primary" style="align-self:flex-end;">Adicionar</button>
+                        </form>
+                        <div class="payment-methods-list" id="paymentMethodsList">
+                            <div class="empty-state">
+                                <div class="empty-icon">💳</div>
+                                <p>Carregando formas de pagamento...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-card settings-card">
+                        <div class="section-header">
+                            <h3>Categorias</h3>
+                        </div>
+                        <p class="page-desc" style="margin-bottom:16px;">Adicione, edite ou remova categorias de receitas e despesas.</p>
+                        <form id="categoryForm" class="settings-form" style="flex-direction:row;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                            <div class="form-group" style="flex:1;min-width:170px;">
+                                <label for="newCategoryName">Nome</label>
+                                <input type="text" id="newCategoryName" placeholder="Ex: Academia, Petshop, Assinaturas..." />
+                            </div>
+                            <div class="form-group" style="min-width:110px;">
+                                <label for="newCategoryType">Tipo</label>
+                                <select id="newCategoryType" class="filter-select">
+                                    <option value="expense">Despesa</option>
+                                    <option value="income">Receita</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="min-width:80px;">
+                                <label for="newCategoryIcon">Ícone</label>
+                                <input type="text" id="newCategoryIcon" class="icon-input" maxlength="4" value="💰" title="Digite um emoji ou escolha abaixo" />
+                            </div>
+                            <div class="form-group" style="min-width:70px;">
+                                <label for="newCategoryColor">Cor</label>
+                                <input type="color" id="newCategoryColor" class="color-input" value="#6c63ff" />
+                            </div>
+                            <button type="submit" class="btn-primary" id="categoryFormSubmit" style="align-self:flex-end;">Adicionar</button>
+                            <button type="button" class="btn-secondary" id="categoryFormCancel" style="align-self:flex-end;display:none;">Cancelar</button>
+                        </form>
+                        <div class="emoji-palette" id="categoryEmojiPalette"></div>
+                        <div class="categories-list" id="categoriesList">
+                            <div class="empty-state">
+                                <div class="empty-icon">🏷️</div>
+                                <p>Carregando categorias...</p>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="section-card settings-card">
@@ -443,6 +546,13 @@
                 <div class="form-group">
                     <label for="txNote">Observação (opcional)</label>
                     <input type="text" id="txNote" placeholder="Adicionar nota..." />
+                </div>
+                <div class="form-group">
+                    <label for="txPaymentMethod">Forma de Pagamento</label>
+                    <select id="txPaymentMethod" class="filter-select">
+                        <option value="">Selecione...</option>
+                    </select>
+                    <p class="field-hint">Gerencie as formas em Configurações → Formas de Pagamento.</p>
                 </div>
 
                 <div class="items-editor">
